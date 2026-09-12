@@ -9,41 +9,46 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
+# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT (Sfondo Scuro & Card con Testo Nero)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
 
 st.markdown("""
 <style>
-.stApp { background-color: #F4F6F4; }
-h1, h2, h3 { color: #2D6A4F !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-.recipe-card {
+.stApp { background-color: #121212; }
+h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
+p, label, .stCaption { color: #E2E8F0 !important; }
+
+/* Stile per il contenuto dentro l'expander */
+.recipe-content {
     background-color: #FFFFFF;
-    padding: 22px;
-    border-radius: 20px;
-    box-shadow: 0px 4px 15px rgba(0,0,0,0.05);
-    margin-bottom: 12px;
-    border: 1px solid #E2E8F0;
+    padding: 15px;
+    border-radius: 12px;
+    color: #000000 !important;
 }
+.recipe-content p, .recipe-content li, .recipe-content b, .recipe-content span, .recipe-content h4 {
+    color: #000000 !important;
+}
+
 .pill {
     display: inline-block;
-    padding: 6px 14px;
+    padding: 4px 10px;
     border-radius: 50px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
-    margin-right: 6px;
-    margin-bottom: 12px;
+    margin-right: 4px;
 }
-.pill-cal { background-color: #FFF3E0; color: #E65100; }
-.pill-pro { background-color: #E8F5E9; color: #2E7D32; }
-.pill-car { background-color: #E3F2FD; color: #1565C0; }
-.pill-fat { background-color: #F3E5F5; color: #7B1FA2; }
+.pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
+.pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
+.pill-car { background-color: #E3F2FD !important; color: #1565C0 !important; }
+.pill-fat { background-color: #F3E5F5 !important; color: #7B1FA2 !important; }
+
 div.stButton > button, div.stDownloadButton > button {
     background-color: #2D6A4F !important;
     color: white !important;
     border-radius: 12px !important;
     border: none !important;
-    height: 48px !important;
+    height: 42px !important;
     font-weight: 600 !important;
     width: 100%;
 }
@@ -246,7 +251,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO SCHEDE RICETTA CON OPZIONE DOWNLOAD
+# 6. ARCHIVIO A TENDINA (EXPANDER) PER LA HOME
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -255,38 +260,40 @@ if not st.session_state.recipes:
     st.info("Nessuna ricetta presente. Inserisci il tuo primo link o carica un video!")
 else:
     for idx, item in enumerate(st.session_state.recipes):
-        ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
-        proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
+        titolo = item.get('titolo', 'Ricetta')
+        cal = item.get('calorie', 'N/D')
+        pro = item.get('proteine', 'N/D')
+        carb = item.get('carboidrati', 'N/D')
+        fat = item.get('grassi', 'N/D')
 
-        st.markdown(f"""
-        <div class="recipe-card">
-            <h3 style="margin-top:0;">👨‍🍳 {item.get('titolo', 'Ricetta')}</h3>
-            <div>
-                <span class="pill pill-cal">🔥 {item.get('calorie', 'N/D')}</span>
-                <span class="pill pill-pro">💪 Pro: {item.get('proteine', 'N/D')}</span>
-                <span class="pill pill-car">🍚 Carb: {item.get('carboidrati', 'N/D')}</span>
-                <span class="pill pill-fat">🥑 Grassi: {item.get('grassi', 'N/D')}</span>
+        # Titolo della tendina con nome e macro in evidenza
+        expander_title = f"🍳 {titolo}  |  🔥 {cal}  |  💪 Pro: {pro}  |  🍚 Carb: {carb}  |  🥑 Grassi: {fat}"
+
+        with st.expander(expander_title):
+            ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
+            proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
+
+            st.markdown(f"""
+            <div class="recipe-content">
+                <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
+                <p><b>👨‍🍳 Procedimento:</b></p><ol>{proc_html}</ol>
             </div>
-            <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
-            <p><b>👨‍🍳 Procedimento:</b></p><ol>{proc_html}</ol>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-        recipe_txt = format_recipe_text(item)
-        file_name = f"{item.get('titolo', 'ricetta').lower().replace(' ', '_')}.txt"
+            recipe_txt = format_recipe_text(item)
+            file_name = f"{titolo.lower().replace(' ', '_')}.txt"
 
-        col1, col2, col3 = st.columns([2, 2, 1])
-        with col1:
-            if item.get("url") != "#":
-                st.link_button("🎥 Video Originale", item.get("url"), use_container_width=True)
-            else:
-                st.caption("📱 Video caricato da galleria")
-        with col2:
-            st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
-        with col3:
-            if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
-                st.session_state.recipes.pop(idx)
-                save_recipes(st.session_state.recipes)
-                st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            col1, col2, col3 = st.columns([2, 2, 1])
+            with col1:
+                if item.get("url") != "#":
+                    st.link_button("🎥 Video Originale", item.get("url"), use_container_width=True)
+                else:
+                    st.caption("📱 Video da galleria")
+            with col2:
+                st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
+            with col3:
+                if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
+                    st.session_state.recipes.pop(idx)
+                    save_recipes(st.session_state.recipes)
+                    st.rerun()
