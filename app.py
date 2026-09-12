@@ -21,12 +21,42 @@ p, label, .stCaption { color: #E2E8F0 !important; }
 
 .recipe-content {
     background-color: #FFFFFF;
-    padding: 15px;
-    border-radius: 12px;
+    padding: 20px;
+    border-radius: 16px;
     color: #000000 !important;
+    text-align: center;
 }
 .recipe-content p, .recipe-content li, .recipe-content b, .recipe-content span, .recipe-content h4 {
     color: #000000 !important;
+}
+.recipe-title-large {
+    font-size: 26px;
+    font-weight: 800;
+    color: #1A1A1A !important;
+    margin-bottom: 8px;
+    line-height: 1.2;
+}
+.macros-container {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.pill {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 50px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
+.pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
+.pill-car { background-color: #E3F2FD !important; color: #1565C0 !important; }
+.pill-fat { background-color: #F3E5F5 !important; color: #7B1FA2 !important; }
+
+.recipe-body-text {
+    text-align: left;
 }
 
 div.stButton > button, div.stDownloadButton > button {
@@ -163,7 +193,6 @@ def download_and_analyze_link(url):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            # Estrazione automatica pulita di descrizione e titolo
             desc = info_dict.get('description', '') or ''
             title = info_dict.get('title', '') or ''
             scraped_desc = f"Titolo: {title} | Didascalia: {desc}"
@@ -248,7 +277,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) PER LA HOME
+# 6. ARCHIVIO A TENDINA (EXPANDER) CON TITOLO GRANDE E MACRO SOTTO
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -263,16 +292,27 @@ else:
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
 
-        expander_title = f"🍳 {titolo}  |  🔥 {cal}  |  💪 Pro: {pro}  |  🍚 Carb: {carb}  |  🥑 Grassi: {fat}"
+        # Titolo della tendina in home (compatto)
+        expander_title = f"🍳 {titolo}  |  🔥 {cal}"
 
         with st.expander(expander_title):
             ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
             proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
 
+            # Scheda interna con Titolo grande e centrale, seguito dai macronutrienti più piccoli sotto
             st.markdown(f"""
             <div class="recipe-content">
-                <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
-                <p><b>👨‍🍳 Procedimento:</b></p><ol>{proc_html}</ol>
+                <div class="recipe-title-large">🍳 {titolo}</div>
+                <div class="macros-container">
+                    <span class="pill pill-cal">🔥 {cal}</span>
+                    <span class="pill pill-pro">💪 Pro: {pro}</span>
+                    <span class="pill pill-car">🍚 Carb: {carb}</span>
+                    <span class="pill pill-fat">🥑 Grassi: {fat}</span>
+                </div>
+                <div class="recipe-body-text">
+                    <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
+                    <p><b>👨‍🍳 Procedimento:</b></p><ol>{proc_html}</ol>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
