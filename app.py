@@ -82,7 +82,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (GEMINI 3.6 FLASH)
+# 3. ENGINE IA: GOOGLE GENAI (AUTOMATICO)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEY:
@@ -104,13 +104,14 @@ def analyze_video_file(file_path, video_description=""):
         raise Exception("Impossibile elaborare il file video con Gemini.")
 
     prompt = f"""
-    Analizza questo video di cucina, ascolta la voce guida e guarda le scritte a schermo.
-    IMPORTANTE: Fai riferimento assoluto e principale alla seguente DESCRIZIONE/TESTO DEL POST (che contiene le dosi ufficiali):
-    ---
-    {video_description if video_description.strip() else "Nessuna descrizione testuale fornita."}
-    ---
+    Analizza con la massima precisione questo video di cucina. 
+    1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
+    2. Ascolta la voce guida e l'audio.
+    3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
     
-    Usa la descrizione testuale sopra per estrarre con precisione millimetrica gli ingredienti e le dosi esatte, incrociandoli con il video se necessario. Estrai anche il titolo, il procedimento passo-passo e stima i macronutrienti totali.
+    ATTENZIONE: Se ci sono discrepanze tra la descrizione testuale e ciò che viene detto nel video, dai priorità alle quantità esatte indicate nel testo a schermo o nella descrizione ufficiale del post per gli ingredienti.
+    
+    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
     
     Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
     {{
@@ -141,9 +142,9 @@ def analyze_video_file(file_path, video_description=""):
     raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
 
 # =========================================================
-# 4. FUNZIONI DI ESTRAZIONE E DOWNLOAD AVANZATA
+# 4. ESTRAZIONE AUTOMATICA DA LINK
 # =========================================================
-def download_and_analyze_link(url, manual_desc=""):
+def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         temp_path = tmp_file.name
 
@@ -156,21 +157,18 @@ def download_and_analyze_link(url, manual_desc=""):
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'extractor_args': {'instagram': {'max_comments': 0}},
+            'socket_timeout': 30,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
-            # Raccoglie descrizione, titolo o note rilasciate dal social
+            # Estrazione automatica pulita di descrizione e titolo
             desc = info_dict.get('description', '') or ''
             title = info_dict.get('title', '') or ''
-            scraped_desc = f"Titolo post: {title}\nDescrizione/Didascalia: {desc}"
+            scraped_desc = f"Titolo: {title} | Didascalia: {desc}"
 
-        # Unisce la descrizione estratta in automatico a quella eventualmente incollata a mano dall'utente
-        final_description = f"{scraped_desc}\n\nNote/Dosi aggiuntive inserite a mano: {manual_desc}"
-
-        data = analyze_video_file(temp_path, final_description)
+        data = analyze_video_file(temp_path, scraped_desc)
         data["url"] = url
         return data
     finally:
@@ -180,13 +178,13 @@ def download_and_analyze_link(url, manual_desc=""):
             except Exception:
                 pass
 
-def process_uploaded_video(uploaded_file, manual_desc=""):
+def process_uploaded_video(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         tmp_file.write(uploaded_file.read())
         temp_path = tmp_file.name
 
     try:
-        data = analyze_video_file(temp_path, video_description=f"Video locale. Note aggiuntive: {manual_desc}")
+        data = analyze_video_file(temp_path, video_description="Video caricato da file locale.")
         data["url"] = "#"
         return data
     finally:
@@ -200,7 +198,7 @@ def process_uploaded_video(uploaded_file, manual_desc=""):
 # 5. INTERFACCIA UTENTE PRINCIPALE
 # =========================================================
 st.title("👨‍🍳 SfizFit")
-st.caption("Estrai ricette e macronutrienti direttamente da video Reels, TikTok o file locali.")
+st.caption("Estrai ricette e macronutrienti in modo 100% automatico da Reels, TikTok o file.")
 
 if not API_KEY:
     st.error("⚠️ **Attenzione:** Configura la variabile `GEMINI_API_KEY` nei Secrets di Streamlit Cloud per procedere.")
@@ -214,37 +212,31 @@ recipe_data = None
 # TAB 1: DOWNLOAD AUTOMATICO DA LINK
 with tab1:
     video_url = st.text_input("Incolla qui il link del Reel o TikTok:", placeholder="https://www.instagram.com/reel/...")
-    # Casella di testo opzionale per incollare la descrizione se il social la blocca
-    manual_desc_link = st.text_area("📝 (Opzionale) Incolla qui la descrizione o gli ingredienti scritti nel post:", placeholder="Es. 30g cacao, 15g eritritolo...", help="Usalo se vuoi essere sicuro al 100% che Gemini usi queste dosi precise.")
-
-    if st.button("🚀 Scarica Video ed Estrai Ricetta"):
+    if st.button("🚀 Estrai Ricetta in Automatico"):
         if not API_KEY:
             st.error("🔑 Manca l'API Key nei Secrets.")
         elif not video_url:
             st.warning("⚠️ Inserisci un link valido.")
         else:
             try:
-                with st.spinner("⬇️ Download del video e lettura didascalia in corso..."):
+                with st.spinner("⬇️ Download del video e lettura automatica in corso..."):
                     pass
-                with st.spinner("🤖 Gemini sta incrociando video e descrizione..."):
-                    recipe_data = download_and_analyze_link(video_url, manual_desc_link)
+                with st.spinner("🤖 Gemini sta leggendo video, scritte a schermo e didascalia..."):
+                    recipe_data = download_and_analyze_link(video_url)
 
             except Exception as e:
-                st.error(f"❌ Errore durante l'estrazione: {e}\n\n"
-                         f"💡 **Suggerimento:** Incolla gli ingredienti nella casella sopra o usa la scheda **'Carica Video Manuale'**.")
+                st.error(f"❌ Errore durante l'estrazione automatica: {e}")
 
 # TAB 2: CARICAMENTO FILE MANUALE
 with tab2:
     uploaded_file = st.file_uploader("Seleziona un video dalla tua galleria (.mp4, .mov)", type=["mp4", "mov"])
-    manual_desc_file = st.text_area("📝 (Opzionale) Aggiungi note o dosi per questo video:", placeholder="Es. Usare latte di mandorla...")
-    
     if uploaded_file and st.button("👨‍🍳 Analizza Video Caricato"):
         if not API_KEY:
             st.error("🔑 Manca l'API Key nei Secrets.")
         else:
             try:
                 with st.spinner("🤖 Analisi visiva e audio del video in corso con Gemini..."):
-                    recipe_data = process_uploaded_video(uploaded_file, manual_desc_file)
+                    recipe_data = process_uploaded_video(uploaded_file)
             except Exception as e:
                 st.error(f"❌ Errore durante l'analisi del video: {e}")
 
