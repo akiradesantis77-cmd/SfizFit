@@ -25,7 +25,7 @@ st.markdown("""
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
 
-/* RIMUOVE DEFINITIVAMENTE BARRA, MENU, FOOTER E ICONE FLUTTUANTI IN BASSO A DESTRA */
+/* RIMUOVE DEFINITIVAMENTE BARRA, MENU, FOOTER E ICONE FLUTTUANTI */
 #MainMenu {visibility: hidden; display: none;}
 footer {visibility: hidden; display: none;}
 header {visibility: hidden; display: none;}
@@ -35,8 +35,6 @@ div[data-testid="stToolbar"] {visibility: hidden; display: none;}
 div[data-testid="stDecoration"] {visibility: hidden; display: none;}
 div[data-testid="stStatusWidget"] {visibility: hidden; display: none;}
 iframe[data-testid="stIFrame"] {display: none;}
-
-/* Selettori specifici per i badge fluttuanti in basso a destra (Corona / Logo Streamlit) */
 .viewerBadge_container__1QSob {display: none !important;}
 [class*="viewerBadge"] {display: none !important;}
 [data-testid="benji"] {display: none !important; visibility: hidden;}
@@ -51,43 +49,49 @@ footer ~ div {display: none !important;}
 
 .recipe-content {
     background-color: #FFFFFF;
-    padding: 20px;
+    padding: 15px 10px;
     border-radius: 16px;
     color: #000000 !important;
     text-align: center;
+    width: 100%;
+    box-sizing: border-box;
 }
 .recipe-content p, .recipe-content li, .recipe-content b, .recipe-content span, .recipe-content h4 {
     color: #000000 !important;
 }
 .recipe-title-large {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
     color: #1A1A1A !important;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     line-height: 1.3;
 }
 
-/* Container responsive per mantenere i macro su una riga */
+/* Container responsive: forza tutti i macro su un'unica riga adattandosi agli schermi piccoli */
 .macros-container {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
     flex-wrap: nowrap;
-    gap: 5px;
-    margin-bottom: 20px;
+    gap: 3px;
+    margin-bottom: 15px;
     width: 100%;
-    overflow-x: auto;
+    box-sizing: border-box;
 }
 
 .pill {
-    display: inline-block;
-    padding: 4px 8px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    padding: 5px 4px;
     border-radius: 50px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     white-space: nowrap;
-    flex: 1 1 auto;
+    flex: 1;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
 .pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
@@ -342,9 +346,9 @@ else:
                 <div class="recipe-title-large">🍳 {titolo}</div>
                 <div class="macros-container">
                     <span class="pill pill-cal">🔥 {cal}</span>
-                    <span class="pill pill-pro">💪 Pro: {pro}</span>
-                    <span class="pill pill-car">🍚 Carb: {carb}</span>
-                    <span class="pill pill-fat">🥑 Grassi: {fat}</span>
+                    <span class="pill pill-pro">💪 {pro}</span>
+                    <span class="pill pill-car">🍚 {carb}</span>
+                    <span class="pill pill-fat">🥑 {fat}</span>
                 </div>
                 <div class="recipe-body-text">
                     <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
