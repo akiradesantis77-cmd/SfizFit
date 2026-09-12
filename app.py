@@ -1,0 +1,289 @@
+import json
+import os
+import re
+import tempfile
+import time
+import streamlit as st
+from google import genai
+from google.genai import types
+import yt_dlp
+
+# =========================================================
+# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
+# =========================================================
+st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
+
+st.markdown("""
+<style>
+.stApp { background-color: #F4F6F4; }
+h1, h2, h3 { color: #2D6A4F !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
+.recipe-card {
+    background-color: #FFFFFF;
+    padding: 22px;
+    border-radius: 20px;
+    box-shadow: 0px 4px 15px rgba(0,0,0,0.05);
+    margin-bottom: 12px;
+    border: 1px solid #E2E8F0;
+}
+.pill {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 50px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 6px;
+    margin-bottom: 12px;
+}
+.pill-cal { background-color: #FFF3E0; color: #E65100; }
+.pill-pro { background-color: #E8F5E9; color: #2E7D32; }
+.pill-car { background-color: #E3F2FD; color: #1565C0; }
+.pill-fat { background-color: #F3E5F5; color: #7B1FA2; }
+div.stButton > button, div.stDownloadButton > button {
+    background-color: #2D6A4F !important;
+    color: white !important;
+    border-radius: 12px !important;
+    border: none !important;
+    height: 48px !important;
+    font-weight: 600 !important;
+    width: 100%;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Recupero automatico della chiave dai Secrets di Streamlit
+API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+
+# =========================================================
+# 2. FUNZIONI DI GESTIONE ARCHIVIO LOCALE
+# =========================================================
+DATA_FILE = "recipes.json"
+
+def load_recipes():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_recipes(recipes):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(recipes, f, ensure_ascii=False, indent=2)
+
+def format_recipe_text(item):
+    text = f"👨‍🍳 SFIZFIT - {item.get('titolo', 'Ricetta')}\n"
+    text += "="*40 + "\n"
+    text += f"🔥 Calorie: {item.get('calorie', 'N/D')}\n"
+    text += f"💪 Proteine: {item.get('proteine', 'N/D')}\n"
+    text += f"🍚 Carboidrati: {item.get('carboidrati', 'N/D')}\n"
+    text += f"🥑 Grassi: {item.get('grassi', 'N/D')}\n\n"
+    text += "🛒 INGREDIENTI:\n"
+    for ing in item.get("ingredienti", []):
+        text += f"- {ing}\n"
+    text += "\n👨‍🍳 PROCEDIMENTO:\n"
+    for idx, step in enumerate(item.get("procedimento", []), 1):
+        text += f"{idx}. {step}\n"
+    if item.get("url") and item.get("url") != "#":
+        text += f"\n🎥 Link Video Originale: {item.get('url')}\n"
+    return text
+
+if "recipes" not in st.session_state:
+    st.session_state.recipes = load_recipes()
+
+# =========================================================
+# 3. ENGINE IA: GOOGLE GENAI
+# =========================================================
+def analyze_video_file(file_path):
+    if not API_KEY:
+        raise Exception("API Key non trovata nei Secrets di Streamlit.")
+        
+    client = genai.Client(api_key=API_KEY.strip())
+    
+    with open(file_path, "rb") as f:
+        uploaded_video = client.files.upload(file=f)
+    
+    while uploaded_video.state.name == "PROCESSING":
+        time.sleep(2)
+        uploaded_video = client.files.get(name=uploaded_video.name)
+
+    if uploaded_video.state.name == "FAILED":
+        raise Exception("Impossibile elaborare il file video con Gemini.")
+
+    prompt = """
+    Guarda attentamente questo video di cucina, ascolta la voce guida e leggi le scritte a schermo.
+    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi, il procedimento passo-passo e stima i macronutrienti totali.
+    
+    Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
+    {
+        "titolo": "Nome del piatto",
+        "calorie": "450 kcal",
+        "proteine": "35g",
+        "carboidrati": "40g",
+        "grassi": "15g",
+        "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
+        "procedimento": ["passo 1", "passo 2"]
+    }
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[uploaded_video, prompt]
+        )
+    finally:
+        try:
+            client.files.delete(name=uploaded_video.name)
+        except Exception:
+            pass
+
+    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+    if json_match:
+        return json.loads(json_match.group(0))
+    raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
+
+# =========================================================
+# 4. FUNZIONI DI ESTRAZIONE E DOWNLOAD
+# =========================================================
+def download_and_analyze_link(url):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+        temp_path = tmp_file.name
+
+    try:
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': temp_path,
+            'quiet': True,
+            'no_warnings': True,
+            'overwrites': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        data = analyze_video_file(temp_path)
+        data["url"] = url
+        return data
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+def process_uploaded_video(uploaded_file):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        temp_path = tmp_file.name
+
+    try:
+        data = analyze_video_file(temp_path)
+        data["url"] = "#"
+        return data
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+# =========================================================
+# 5. INTERFACCIA UTENTE PRINCIPALE
+# =========================================================
+st.title("👨‍🍳 SfizFit")
+st.caption("Estrai ricette e macronutrienti direttamente da video Reels, TikTok o file locali.")
+
+if not API_KEY:
+    st.error("⚠️ **Attenzione:** Configura la variabile `GEMINI_API_KEY` nei Secrets di Streamlit Cloud per procedere.")
+
+st.markdown("---")
+
+tab1, tab2 = st.tabs(["🔗 Scarica da Link Social", "📁 Carica Video Manuale"])
+
+recipe_data = None
+
+# TAB 1: DOWNLOAD AUTOMATICO DA LINK
+with tab1:
+    video_url = st.text_input("Incolla qui il link del Reel o TikTok:", placeholder="https://www.instagram.com/reel/...")
+    if st.button("🚀 Scarica Video ed Estrai Ricetta"):
+        if not API_KEY:
+            st.error("🔑 Manca l'API Key nei Secrets.")
+        elif not video_url:
+            st.warning("⚠️ Inserisci un link valido.")
+        else:
+            try:
+                with st.spinner("⬇️ Download del video dal link social in corso..."):
+                    pass
+                with st.spinner("🤖 Gemini sta guardando il video ed estraendo la ricetta..."):
+                    recipe_data = download_and_analyze_link(video_url)
+
+            except Exception as e:
+                st.error(f"❌ Errore durante l'estrazione: {e}\n\n"
+                         f"💡 **Alternativa:** Usa la scheda **'Carica Video Manuale'**.")
+
+# TAB 2: CARICAMENTO FILE MANUALE
+with tab2:
+    uploaded_file = st.file_uploader("Seleziona un video dalla tua galleria (.mp4, .mov)", type=["mp4", "mov"])
+    if uploaded_file and st.button("👨‍🍳 Analizza Video Caricato"):
+        if not API_KEY:
+            st.error("🔑 Manca l'API Key nei Secrets.")
+        else:
+            try:
+                with st.spinner("🤖 Analisi visiva e audio del video in corso con Gemini..."):
+                    recipe_data = process_uploaded_video(uploaded_file)
+            except Exception as e:
+                st.error(f"❌ Errore durante l'analisi del video: {e}")
+
+# SALVATAGGIO
+if recipe_data:
+    st.session_state.recipes.insert(0, recipe_data)
+    save_recipes(st.session_state.recipes)
+    st.success("✅ Ricetta estratta e salvata con successo!")
+    st.rerun()
+
+# =========================================================
+# 6. ARCHIVIO SCHEDE RICETTA CON OPZIONE DOWNLOAD
+# =========================================================
+st.markdown("---")
+st.subheader("📚 Il tuo Ricettario SfizFit")
+
+if not st.session_state.recipes:
+    st.info("Nessuna ricetta presente. Inserisci il tuo primo link o carica un video!")
+else:
+    for idx, item in enumerate(st.session_state.recipes):
+        ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
+        proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
+
+        st.markdown(f"""
+        <div class="recipe-card">
+            <h3 style="margin-top:0;">👨‍🍳 {item.get('titolo', 'Ricetta')}</h3>
+            <div>
+                <span class="pill pill-cal">🔥 {item.get('calorie', 'N/D')}</span>
+                <span class="pill pill-pro">💪 Pro: {item.get('proteine', 'N/D')}</span>
+                <span class="pill pill-car">🍚 Carb: {item.get('carboidrati', 'N/D')}</span>
+                <span class="pill pill-fat">🥑 Grassi: {item.get('grassi', 'N/D')}</span>
+            </div>
+            <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
+            <p><b>👨‍🍳 Procedimento:</b></p><ol>{proc_html}</ol>
+        </div>
+        """, unsafe_allow_html=True)
+
+        recipe_txt = format_recipe_text(item)
+        file_name = f"{item.get('titolo', 'ricetta').lower().replace(' ', '_')}.txt"
+
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            if item.get("url") != "#":
+                st.link_button("🎥 Video Originale", item.get("url"), use_container_width=True)
+            else:
+                st.caption("📱 Video caricato da galleria")
+        with col2:
+            st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
+        with col3:
+            if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
+                st.session_state.recipes.pop(idx)
+                save_recipes(st.session_state.recipes)
+                st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
