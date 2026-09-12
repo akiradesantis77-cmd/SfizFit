@@ -335,11 +335,11 @@ with tab2:
             except Exception as e:
                 st.error(f"❌ Errore durante l'analisi del video: {e}")
 
-# SALVATAGGIO NELLA MEMORIA DEL TELEFONO
+# SALVATAGGIO NELLA MEMORIA LOCALE
 if recipe_data:
     st.session_state.recipes.insert(0, recipe_data)
     save_recipes(st.session_state.recipes)
-    st.success("✅ Ricetta salvata nella memoria del tuo telefono!")
+    st.success("✅ Ricetta salvata nella memoria del telefono!")
     st.rerun()
 
 # =========================================================
