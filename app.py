@@ -13,9 +13,9 @@ import yt_dlp
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
 
-# Forza la modalità viewer per pulire i menu di sviluppo
+# Imposta la modalità minimal per nascondere i widget di sviluppo/deploy
 try:
-    st.set_option("client.toolbarMode", "viewer")
+    st.set_option("client.toolbarMode", "minimal")
 except Exception:
     pass
 
@@ -25,7 +25,7 @@ st.markdown("""
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
 
-/* RIMUOVE DEFINITIVAMENTE I BANNER, TOOLBAR E DECORAZIONI STREAMLIT */
+/* RIMUOVE DEFINITIVAMENTE BARRA, MENU, FOOTER E ICONE FLUTTUANTI IN BASSO A DESTRA */
 #MainMenu {visibility: hidden; display: none;}
 footer {visibility: hidden; display: none;}
 header {visibility: hidden; display: none;}
@@ -33,6 +33,14 @@ div[data-testid="stToolbar"] {visibility: hidden; display: none;}
 .stAppToolbar {visibility: hidden; display: none;}
 .stAppDeployButton {display: none;}
 div[data-testid="stDecoration"] {visibility: hidden; display: none;}
+div[data-testid="stStatusWidget"] {visibility: hidden; display: none;}
+iframe[data-testid="stIFrame"] {display: none;}
+
+/* Selettori specifici per i badge fluttuanti in basso a destra (Corona / Logo Streamlit) */
+.viewerBadge_container__1QSob {display: none !important;}
+[class*="viewerBadge"] {display: none !important;}
+[data-testid="benji"] {display: none !important; visibility: hidden;}
+footer ~ div {display: none !important;}
 
 /* Stile per ingrandire il titolo dell'expander (anteprima in home) */
 .streamlit-expanderHeader p {
