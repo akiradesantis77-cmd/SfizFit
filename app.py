@@ -101,7 +101,10 @@ def analyze_video_file(file_path):
     client = genai.Client(api_key=API_KEY.strip())
     
     with open(file_path, "rb") as f:
-        uploaded_video = client.files.upload(file=f)
+        uploaded_video = client.files.upload(
+            file=f,
+            config=types.UploadFileConfig(mime_type="video/mp4")
+        )
     
     while uploaded_video.state.name == "PROCESSING":
         time.sleep(2)
