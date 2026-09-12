@@ -37,11 +37,11 @@ p, label, .stCaption { color: #E2E8F0 !important; }
     color: #000000 !important;
 }
 .recipe-title-large {
-    font-size: 26px;
+    font-size: 20px; /* Ottimizzato per smartphone */
     font-weight: 800;
     color: #1A1A1A !important;
-    margin-bottom: 8px;
-    line-height: 1.2;
+    margin-bottom: 12px;
+    line-height: 1.3;
 }
 .macros-container {
     display: flex;
@@ -284,7 +284,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) CON SOLO TITOLO IN ANTEPRIMA
+# 6. ARCHIVIO A TENDINA (EXPANDER) CON TITOLO OTTIMIZZATO MOBILE
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -299,14 +299,12 @@ else:
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
 
-        # In home si vede solo il titolo (più grande grazie al CSS dedicato)
         expander_title = f"🍳 {titolo}"
 
         with st.expander(expander_title):
             ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
             proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
 
-            # All'interno dell'espansione c'è il titolo grande e i macro in pillole sotto
             st.markdown(f"""
             <div class="recipe-content">
                 <div class="recipe-title-large">🍳 {titolo}</div>
