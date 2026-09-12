@@ -92,7 +92,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI
+# 3. ENGINE IA: GOOGLE GENAI (GEMINI 3.6 FLASH)
 # =========================================================
 def analyze_video_file(file_path):
     if not API_KEY:
@@ -131,7 +131,7 @@ def analyze_video_file(file_path):
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=[uploaded_video, prompt]
         )
     finally:
