@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
+# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT (CON PULIZIA UI)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
 
@@ -18,6 +18,12 @@ st.markdown("""
 .stApp { background-color: #121212; }
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
+
+/* RIMUOVE ELEMENTI FLUTTUANTI E FOOTER DI STREAMLIT */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+.stAppDeployButton {display: none;}
+div[data-testid="stDecoration"] {display: none;}
 
 /* Stile per ingrandire il titolo dell'expander (anteprima in home) */
 .streamlit-expanderHeader p {
@@ -44,7 +50,7 @@ p, label, .stCaption { color: #E2E8F0 !important; }
     line-height: 1.3;
 }
 
-/* Container responsive per mantenere i macro su una riga e adattarli agli schermi stretti */
+/* Container responsive per mantenere i macro su una riga */
 .macros-container {
     display: flex;
     justify-content: center;
@@ -293,7 +299,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) CON MACRO RESPONSIVE SU UN'UNICA RIGA
+# 6. ARCHIVIO A TENDINA (EXPANDER)
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
