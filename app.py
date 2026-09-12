@@ -7,7 +7,6 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import yt_dlp
-from streamlit_local_storage import LocalStorage
 
 # =========================================================
 # 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
@@ -64,15 +63,15 @@ footer ~ div {display: none !important;}
     font-size: 18px;
     font-weight: 800;
     color: #1A1A1A !important;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     line-height: 1.3;
 }
 
-/* Container orizzontale in un'unica riga con nome sopra e pillola sotto */
+/* Container responsive: forza tutti i macro su un'unica riga adattandosi agli schermi piccoli */
 .macros-container {
     display: flex;
     justify-content: space-between;
-    align-items: stretch;
+    align-items: center;
     flex-wrap: nowrap;
     gap: 3px;
     margin-bottom: 15px;
@@ -80,37 +79,19 @@ footer ~ div {display: none !important;}
     box-sizing: border-box;
 }
 
-.macro-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-}
-
-.macro-label {
-    font-size: 8px;
-    font-weight: 700;
-    color: #666666 !important;
-    margin-bottom: 3px;
-    text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-}
-
-.macro-pill {
+.pill {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    padding: 5px 1px;
+    padding: 5px 4px;
     border-radius: 50px;
-    font-size: 9.5px;
+    font-size: 10px;
     font-weight: 700;
     white-space: nowrap;
-    width: 100%;
+    flex: 1;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
 .pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
@@ -136,25 +117,22 @@ div.stButton > button, div.stDownloadButton > button {
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # =========================================================
-# 2. GESTIONE ARCHIVIO LOCALE (MEMORIA DEL TELEFONO)
+# 2. FUNZIONI DI GESTIONE ARCHIVIO LOCALE
 # =========================================================
-storage = LocalStorage()
-LOCAL_STORAGE_KEY = "sfizfit_recipes_v1"
+DATA_FILE = "recipes.json"
 
 def load_recipes():
-    try:
-        data = storage.getItem(LOCAL_STORAGE_KEY)
-        if data:
-            return json.loads(data)
-    except Exception:
-        pass
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
     return []
 
 def save_recipes(recipes):
-    try:
-        storage.setItem(LOCAL_STORAGE_KEY, json.dumps(recipes, ensure_ascii=False))
-    except Exception:
-        pass
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(recipes, f, ensure_ascii=False, indent=2)
 
 def format_recipe_text(item):
     text = f"👨‍🍳 SFIZFIT - {item.get('titolo', 'Ricetta')}\n"
@@ -171,8 +149,7 @@ def format_recipe_text(item):
         text += f"{idx}. {step}\n"
     if item.get("url") and item.get("url") != "#":
         text += f"\n🎥 Link Video Originale: {item.get('url')}\n"
-    
-    return text.encode('utf-8-sig')
+    return text
 
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
@@ -335,15 +312,15 @@ with tab2:
             except Exception as e:
                 st.error(f"❌ Errore durante l'analisi del video: {e}")
 
-# SALVATAGGIO NELLA MEMORIA LOCALE
+# SALVATAGGIO
 if recipe_data:
     st.session_state.recipes.insert(0, recipe_data)
     save_recipes(st.session_state.recipes)
-    st.success("✅ Ricetta salvata nella memoria del telefono!")
+    st.success("✅ Ricetta estratta e salvata con successo!")
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) E GESTIONE BACKUP
+# 6. ARCHIVIO A TENDINA (EXPANDER)
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -368,22 +345,10 @@ else:
             <div class="recipe-content">
                 <div class="recipe-title-large">🍳 {titolo}</div>
                 <div class="macros-container">
-                    <div class="macro-box">
-                        <span class="macro-label">Calorie</span>
-                        <span class="macro-pill pill-cal">🔥 {cal}</span>
-                    </div>
-                    <div class="macro-box">
-                        <span class="macro-label">Proteine</span>
-                        <span class="macro-pill pill-pro">💪 {pro}</span>
-                    </div>
-                    <div class="macro-box">
-                        <span class="macro-label">Carboidrati</span>
-                        <span class="macro-pill pill-car">🍚 {carb}</span>
-                    </div>
-                    <div class="macro-box">
-                        <span class="macro-label">Grassi</span>
-                        <span class="macro-pill pill-fat">🥑 {fat}</span>
-                    </div>
+                    <span class="pill pill-cal">🔥 {cal}</span>
+                    <span class="pill pill-pro">💪 {pro}</span>
+                    <span class="pill pill-car">🍚 {carb}</span>
+                    <span class="pill pill-fat">🥑 {fat}</span>
                 </div>
                 <div class="recipe-body-text">
                     <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
@@ -392,7 +357,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            recipe_bytes = format_recipe_text(item)
+            recipe_txt = format_recipe_text(item)
             file_name = f"{titolo.lower().replace(' ', '_')}.txt"
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -403,44 +368,9 @@ else:
                 else:
                     st.caption("📱 Video da galleria")
             with col2:
-                st.download_button("📄 Scarica Scheda", recipe_bytes, file_name=file_name, mime="text/plain;charset=utf-8", key=f"dl_{idx}", use_container_width=True)
+                st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
             with col3:
                 if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
                     st.session_state.recipes.pop(idx)
                     save_recipes(st.session_state.recipes)
                     st.rerun()
-
-# =========================================================
-# 7. SEZIONE BACKUP & RIPRISTINO TOTALE
-# =========================================================
-st.markdown("---")
-st.subheader("⚙️ Gestione Backup Ricettario")
-st.caption("Salva o ripristina tutte le tue ricette in un unico file per non perderle mai.")
-
-col_b1, col_b2 = st.columns(2)
-
-with col_b1:
-    backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
-    st.download_button(
-        label="📥 Scarica Backup Completo",
-        data=backup_json_str,
-        file_name="sfizfit_backup_totale.json",
-        mime="application/json",
-        use_container_width=True
-    )
-
-with col_b2:
-    uploaded_backup = st.file_uploader("📤 Ripristina da Backup", type=["json"], label_visibility="collapsed")
-    if uploaded_backup is not None:
-        try:
-            restored_data = json.load(uploaded_backup)
-            if isinstance(restored_data, list):
-                st.session_state.recipes = restored_data
-                save_recipes(st.session_state.recipes)
-                st.success("✅ Ricettario ripristinato con successo!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("❌ Il file di backup non è valido.")
-        except Exception as e:
-            st.error(f"❌ Errore durante il ripristino: {e}")
