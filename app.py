@@ -37,25 +37,34 @@ p, label, .stCaption { color: #E2E8F0 !important; }
     color: #000000 !important;
 }
 .recipe-title-large {
-    font-size: 20px; /* Ottimizzato per smartphone */
+    font-size: 20px;
     font-weight: 800;
     color: #1A1A1A !important;
     margin-bottom: 12px;
     line-height: 1.3;
 }
+
+/* Container responsive per mantenere i macro su una riga e adattarli agli schermi stretti */
 .macros-container {
     display: flex;
     justify-content: center;
-    gap: 8px;
-    flex-wrap: wrap;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 5px;
     margin-bottom: 20px;
+    width: 100%;
+    overflow-x: auto;
 }
+
 .pill {
     display: inline-block;
-    padding: 4px 10px;
+    padding: 4px 8px;
     border-radius: 50px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
+    white-space: nowrap;
+    flex: 1 1 auto;
+    text-align: center;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
 .pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
@@ -284,7 +293,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) CON TITOLO OTTIMIZZATO MOBILE
+# 6. ARCHIVIO A TENDINA (EXPANDER) CON MACRO RESPONSIVE SU UN'UNICA RIGA
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
