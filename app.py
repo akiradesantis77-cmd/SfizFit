@@ -6,6 +6,7 @@ import time
 import streamlit as st
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 import yt_dlp
 
 # =========================================================
@@ -173,7 +174,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (AUTOMATICO)
+# 3. ENGINE IA: GOOGLE GENAI (GEMINI 2.5 FLASH)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEY:
@@ -218,9 +219,13 @@ def analyze_video_file(file_path, video_description=""):
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-2.5-flash',
             contents=[uploaded_video, prompt]
         )
+    except APIError as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            raise Exception("Raggiunto il limite di richieste momentaneo di Gemini. Riprova tra circa 1 minuto.")
+        raise Exception(f"Errore API Gemini: {e}")
     finally:
         try:
             client.files.delete(name=uploaded_video.name)
