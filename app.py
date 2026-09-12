@@ -64,15 +64,15 @@ footer ~ div {display: none !important;}
     font-size: 18px;
     font-weight: 800;
     color: #1A1A1A !important;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     line-height: 1.3;
 }
 
-/* Container responsive: forza tutti i macro su un'unica riga adattandosi agli schermi piccoli */
+/* Container orizzontale in un'unica riga con nome sopra e pillola sotto */
 .macros-container {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: stretch;
     flex-wrap: nowrap;
     gap: 3px;
     margin-bottom: 15px;
@@ -80,16 +80,36 @@ footer ~ div {display: none !important;}
     box-sizing: border-box;
 }
 
-.pill {
+.macro-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.macro-label {
+    font-size: 8px;
+    font-weight: 700;
+    color: #666666 !important;
+    margin-bottom: 3px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.macro-pill {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    padding: 6px 3px;
+    padding: 5px 1px;
     border-radius: 50px;
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
     white-space: nowrap;
-    flex: 1;
+    width: 100%;
     text-align: center;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
@@ -348,10 +368,22 @@ else:
             <div class="recipe-content">
                 <div class="recipe-title-large">🍳 {titolo}</div>
                 <div class="macros-container">
-                    <span class="pill pill-cal">🔥 {cal}</span>
-                    <span class="pill pill-pro">💪 P: {pro}</span>
-                    <span class="pill pill-car">🍚 C: {carb}</span>
-                    <span class="pill pill-fat">🥑 G: {fat}</span>
+                    <div class="macro-box">
+                        <span class="macro-label">Calorie</span>
+                        <span class="macro-pill pill-cal">🔥 {cal}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Proteine</span>
+                        <span class="macro-pill pill-pro">💪 {pro}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Carboidrati</span>
+                        <span class="macro-pill pill-car">🍚 {carb}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Grassi</span>
+                        <span class="macro-pill pill-fat">🥑 {fat}</span>
+                    </div>
                 </div>
                 <div class="recipe-body-text">
                     <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
