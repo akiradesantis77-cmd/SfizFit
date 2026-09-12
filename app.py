@@ -63,15 +63,15 @@ footer ~ div {display: none !important;}
     font-size: 18px;
     font-weight: 800;
     color: #1A1A1A !important;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     line-height: 1.3;
 }
 
-/* Container responsive: forza tutti i macro su un'unica riga adattandosi agli schermi piccoli */
+/* Container responsive con etichetta sopra e pillola sotto */
 .macros-container {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: stretch;
     flex-wrap: nowrap;
     gap: 3px;
     margin-bottom: 15px;
@@ -79,19 +79,37 @@ footer ~ div {display: none !important;}
     box-sizing: border-box;
 }
 
-.pill {
+.macro-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.macro-label {
+    font-size: 8px;
+    font-weight: 700;
+    color: #666666 !important;
+    margin-bottom: 3px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+.macro-pill {
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    padding: 5px 4px;
+    padding: 5px 1px;
     border-radius: 50px;
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
     white-space: nowrap;
-    flex: 1;
+    width: 100%;
     text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
 .pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
@@ -149,7 +167,7 @@ def format_recipe_text(item):
         text += f"{idx}. {step}\n"
     if item.get("url") and item.get("url") != "#":
         text += f"\n🎥 Link Video Originale: {item.get('url')}\n"
-    return text
+    return text.encode('utf-8-sig')
 
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
@@ -345,10 +363,22 @@ else:
             <div class="recipe-content">
                 <div class="recipe-title-large">🍳 {titolo}</div>
                 <div class="macros-container">
-                    <span class="pill pill-cal">🔥 {cal}</span>
-                    <span class="pill pill-pro">💪 {pro}</span>
-                    <span class="pill pill-car">🍚 {carb}</span>
-                    <span class="pill pill-fat">🥑 {fat}</span>
+                    <div class="macro-box">
+                        <span class="macro-label">Calorie</span>
+                        <span class="macro-pill pill-cal">🔥 {cal}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Proteine</span>
+                        <span class="macro-pill pill-pro">💪 {pro}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Carboidrati</span>
+                        <span class="macro-pill pill-car">🍚 {carb}</span>
+                    </div>
+                    <div class="macro-box">
+                        <span class="macro-label">Grassi</span>
+                        <span class="macro-pill pill-fat">🥑 {fat}</span>
+                    </div>
                 </div>
                 <div class="recipe-body-text">
                     <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
@@ -368,9 +398,44 @@ else:
                 else:
                     st.caption("📱 Video da galleria")
             with col2:
-                st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
+                st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain;charset=utf-8", key=f"dl_{idx}", use_container_width=True)
             with col3:
                 if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
                     st.session_state.recipes.pop(idx)
                     save_recipes(st.session_state.recipes)
                     st.rerun()
+
+# =========================================================
+# 7. SEZIONE BACKUP & RIPRISTINO TOTALE
+# =========================================================
+st.markdown("---")
+st.subheader("⚙️ Gestione Backup Ricettario")
+st.caption("Salva o ripristina tutte le tue ricette in un unico file per non perderle mai.")
+
+col_b1, col_b2 = st.columns(2)
+
+with col_b1:
+    backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="📥 Scarica Backup Completo",
+        data=backup_json_str,
+        file_name="sfizfit_backup_totale.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+with col_b2:
+    uploaded_backup = st.file_uploader("📤 Ripristina da Backup", type=["json"], label_visibility="collapsed")
+    if uploaded_backup is not None:
+        try:
+            restored_data = json.load(uploaded_backup)
+            if isinstance(restored_data, list):
+                st.session_state.recipes = restored_data
+                save_recipes(st.session_state.recipes)
+                st.success("✅ Ricettario ripristinato con successo!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("❌ Il file di backup non è valido.")
+        except Exception as e:
+            st.error(f"❌ Errore durante il ripristino: {e}")
