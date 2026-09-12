@@ -7,6 +7,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import yt_dlp
+from streamlit_local_storage import LocalStorage
 
 # =========================================================
 # 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
@@ -83,15 +84,13 @@ footer ~ div {display: none !important;}
     display: inline-flex;
     justify-content: center;
     align-items: center;
-    padding: 5px 4px;
+    padding: 6px 3px;
     border-radius: 50px;
     font-size: 10px;
     font-weight: 700;
     white-space: nowrap;
     flex: 1;
     text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 .pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
 .pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
@@ -117,22 +116,25 @@ div.stButton > button, div.stDownloadButton > button {
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # =========================================================
-# 2. FUNZIONI DI GESTIONE ARCHIVIO LOCALE
+# 2. GESTIONE ARCHIVIO LOCALE (MEMORIA DEL TELEFONO)
 # =========================================================
-DATA_FILE = "recipes.json"
+storage = LocalStorage()
+LOCAL_STORAGE_KEY = "sfizfit_recipes_v1"
 
 def load_recipes():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return []
+    try:
+        data = storage.getItem(LOCAL_STORAGE_KEY)
+        if data:
+            return json.loads(data)
+    except Exception:
+        pass
     return []
 
 def save_recipes(recipes):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(recipes, f, ensure_ascii=False, indent=2)
+    try:
+        storage.setItem(LOCAL_STORAGE_KEY, json.dumps(recipes, ensure_ascii=False))
+    except Exception:
+        pass
 
 def format_recipe_text(item):
     text = f"👨‍🍳 SFIZFIT - {item.get('titolo', 'Ricetta')}\n"
@@ -149,7 +151,8 @@ def format_recipe_text(item):
         text += f"{idx}. {step}\n"
     if item.get("url") and item.get("url") != "#":
         text += f"\n🎥 Link Video Originale: {item.get('url')}\n"
-    return text
+    
+    return text.encode('utf-8-sig')
 
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
@@ -312,15 +315,15 @@ with tab2:
             except Exception as e:
                 st.error(f"❌ Errore durante l'analisi del video: {e}")
 
-# SALVATAGGIO
+# SALVATAGGIO NELLA MEMORIA DEL TELEFONO
 if recipe_data:
     st.session_state.recipes.insert(0, recipe_data)
     save_recipes(st.session_state.recipes)
-    st.success("✅ Ricetta estratta e salvata con successo!")
+    st.success("✅ Ricetta salvata nella memoria del tuo telefono!")
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER)
+# 6. ARCHIVIO A TENDINA (EXPANDER) E GESTIONE BACKUP
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -346,9 +349,9 @@ else:
                 <div class="recipe-title-large">🍳 {titolo}</div>
                 <div class="macros-container">
                     <span class="pill pill-cal">🔥 {cal}</span>
-                    <span class="pill pill-pro">💪 {pro}</span>
-                    <span class="pill pill-car">🍚 {carb}</span>
-                    <span class="pill pill-fat">🥑 {fat}</span>
+                    <span class="pill pill-pro">💪 P: {pro}</span>
+                    <span class="pill pill-car">🍚 C: {carb}</span>
+                    <span class="pill pill-fat">🥑 G: {fat}</span>
                 </div>
                 <div class="recipe-body-text">
                     <p><b>🛒 Ingredienti:</b></p><ul>{ingr_html}</ul>
@@ -357,7 +360,7 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            recipe_txt = format_recipe_text(item)
+            recipe_bytes = format_recipe_text(item)
             file_name = f"{titolo.lower().replace(' ', '_')}.txt"
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -368,9 +371,44 @@ else:
                 else:
                     st.caption("📱 Video da galleria")
             with col2:
-                st.download_button("📄 Scarica Scheda", recipe_txt, file_name=file_name, mime="text/plain", key=f"dl_{idx}", use_container_width=True)
+                st.download_button("📄 Scarica Scheda", recipe_bytes, file_name=file_name, mime="text/plain;charset=utf-8", key=f"dl_{idx}", use_container_width=True)
             with col3:
                 if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
                     st.session_state.recipes.pop(idx)
                     save_recipes(st.session_state.recipes)
                     st.rerun()
+
+# =========================================================
+# 7. SEZIONE BACKUP & RIPRISTINO TOTALE
+# =========================================================
+st.markdown("---")
+st.subheader("⚙️ Gestione Backup Ricettario")
+st.caption("Salva o ripristina tutte le tue ricette in un unico file per non perderle mai.")
+
+col_b1, col_b2 = st.columns(2)
+
+with col_b1:
+    backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="📥 Scarica Backup Completo",
+        data=backup_json_str,
+        file_name="sfizfit_backup_totale.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+with col_b2:
+    uploaded_backup = st.file_uploader("📤 Ripristina da Backup", type=["json"], label_visibility="collapsed")
+    if uploaded_backup is not None:
+        try:
+            restored_data = json.load(uploaded_backup)
+            if isinstance(restored_data, list):
+                st.session_state.recipes = restored_data
+                save_recipes(st.session_state.recipes)
+                st.success("✅ Ricettario ripristinato con successo!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("❌ Il file di backup non è valido.")
+        except Exception as e:
+            st.error(f"❌ Errore durante il ripristino: {e}")
