@@ -9,9 +9,15 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT (CON PULIZIA UI)
+# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
+
+# Forza la modalità viewer per pulire i menu di sviluppo
+try:
+    st.set_option("client.toolbarMode", "viewer")
+except Exception:
+    pass
 
 st.markdown("""
 <style>
@@ -19,11 +25,14 @@ st.markdown("""
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
 
-/* RIMUOVE ELEMENTI FLUTTUANTI E FOOTER DI STREAMLIT */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
+/* RIMUOVE DEFINITIVAMENTE I BANNER, TOOLBAR E DECORAZIONI STREAMLIT */
+#MainMenu {visibility: hidden; display: none;}
+footer {visibility: hidden; display: none;}
+header {visibility: hidden; display: none;}
+div[data-testid="stToolbar"] {visibility: hidden; display: none;}
+.stAppToolbar {visibility: hidden; display: none;}
 .stAppDeployButton {display: none;}
-div[data-testid="stDecoration"] {display: none;}
+div[data-testid="stDecoration"] {visibility: hidden; display: none;}
 
 /* Stile per ingrandire il titolo dell'expander (anteprima in home) */
 .streamlit-expanderHeader p {
