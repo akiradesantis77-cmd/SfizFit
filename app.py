@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT (Sfondo Scuro & Card con Testo Nero)
+# 1. CONFIGURAZIONE PAGINA E GRAFICA SFIZFIT
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="👨‍🍳", layout="centered")
 
@@ -19,7 +19,6 @@ st.markdown("""
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
 
-/* Stile per il contenuto dentro l'expander */
 .recipe-content {
     background-color: #FFFFFF;
     padding: 15px;
@@ -29,19 +28,6 @@ p, label, .stCaption { color: #E2E8F0 !important; }
 .recipe-content p, .recipe-content li, .recipe-content b, .recipe-content span, .recipe-content h4 {
     color: #000000 !important;
 }
-
-.pill {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 50px;
-    font-size: 12px;
-    font-weight: 700;
-    margin-right: 4px;
-}
-.pill-cal { background-color: #FFF3E0 !important; color: #E65100 !important; }
-.pill-pro { background-color: #E8F5E9 !important; color: #2E7D32 !important; }
-.pill-car { background-color: #E3F2FD !important; color: #1565C0 !important; }
-.pill-fat { background-color: #F3E5F5 !important; color: #7B1FA2 !important; }
 
 div.stButton > button, div.stDownloadButton > button {
     background-color: #2D6A4F !important;
@@ -55,7 +41,6 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# Recupero automatico della chiave dai Secrets di Streamlit
 API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 
 # =========================================================
@@ -99,7 +84,7 @@ if "recipes" not in st.session_state:
 # =========================================================
 # 3. ENGINE IA: GOOGLE GENAI (GEMINI 3.6 FLASH)
 # =========================================================
-def analyze_video_file(file_path):
+def analyze_video_file(file_path, video_description=""):
     if not API_KEY:
         raise Exception("API Key non trovata nei Secrets di Streamlit.")
         
@@ -118,12 +103,17 @@ def analyze_video_file(file_path):
     if uploaded_video.state.name == "FAILED":
         raise Exception("Impossibile elaborare il file video con Gemini.")
 
-    prompt = """
-    Guarda attentamente questo video di cucina, ascolta la voce guida e leggi le scritte a schermo.
-    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi, il procedimento passo-passo e stima i macronutrienti totali.
+    prompt = f"""
+    Analizza questo video di cucina, ascolta la voce guida e guarda le scritte a schermo.
+    IMPORTANTE: Fai riferimento assoluto e principale alla seguente DESCRIZIONE/TESTO DEL POST (che contiene le dosi ufficiali):
+    ---
+    {video_description if video_description.strip() else "Nessuna descrizione testuale fornita."}
+    ---
+    
+    Usa la descrizione testuale sopra per estrarre con precisione millimetrica gli ingredienti e le dosi esatte, incrociandoli con il video se necessario. Estrai anche il titolo, il procedimento passo-passo e stima i macronutrienti totali.
     
     Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
-    {
+    {{
         "titolo": "Nome del piatto",
         "calorie": "450 kcal",
         "proteine": "35g",
@@ -131,7 +121,7 @@ def analyze_video_file(file_path):
         "grassi": "15g",
         "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
         "procedimento": ["passo 1", "passo 2"]
-    }
+    }}
     """
     
     try:
@@ -151,11 +141,13 @@ def analyze_video_file(file_path):
     raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
 
 # =========================================================
-# 4. FUNZIONI DI ESTRAZIONE E DOWNLOAD
+# 4. FUNZIONI DI ESTRAZIONE E DOWNLOAD AVANZATA
 # =========================================================
-def download_and_analyze_link(url):
+def download_and_analyze_link(url, manual_desc=""):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         temp_path = tmp_file.name
+
+    scraped_desc = ""
 
     try:
         ydl_opts = {
@@ -164,13 +156,21 @@ def download_and_analyze_link(url):
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'extractor_args': {'instagram': {'max_comments': 0}},
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info_dict = ydl.extract_info(url, download=True)
+            # Raccoglie descrizione, titolo o note rilasciate dal social
+            desc = info_dict.get('description', '') or ''
+            title = info_dict.get('title', '') or ''
+            scraped_desc = f"Titolo post: {title}\nDescrizione/Didascalia: {desc}"
 
-        data = analyze_video_file(temp_path)
+        # Unisce la descrizione estratta in automatico a quella eventualmente incollata a mano dall'utente
+        final_description = f"{scraped_desc}\n\nNote/Dosi aggiuntive inserite a mano: {manual_desc}"
+
+        data = analyze_video_file(temp_path, final_description)
         data["url"] = url
         return data
     finally:
@@ -180,13 +180,13 @@ def download_and_analyze_link(url):
             except Exception:
                 pass
 
-def process_uploaded_video(uploaded_file):
+def process_uploaded_video(uploaded_file, manual_desc=""):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         tmp_file.write(uploaded_file.read())
         temp_path = tmp_file.name
 
     try:
-        data = analyze_video_file(temp_path)
+        data = analyze_video_file(temp_path, video_description=f"Video locale. Note aggiuntive: {manual_desc}")
         data["url"] = "#"
         return data
     finally:
@@ -214,6 +214,9 @@ recipe_data = None
 # TAB 1: DOWNLOAD AUTOMATICO DA LINK
 with tab1:
     video_url = st.text_input("Incolla qui il link del Reel o TikTok:", placeholder="https://www.instagram.com/reel/...")
+    # Casella di testo opzionale per incollare la descrizione se il social la blocca
+    manual_desc_link = st.text_area("📝 (Opzionale) Incolla qui la descrizione o gli ingredienti scritti nel post:", placeholder="Es. 30g cacao, 15g eritritolo...", help="Usalo se vuoi essere sicuro al 100% che Gemini usi queste dosi precise.")
+
     if st.button("🚀 Scarica Video ed Estrai Ricetta"):
         if not API_KEY:
             st.error("🔑 Manca l'API Key nei Secrets.")
@@ -221,25 +224,27 @@ with tab1:
             st.warning("⚠️ Inserisci un link valido.")
         else:
             try:
-                with st.spinner("⬇️ Download del video dal link social in corso..."):
+                with st.spinner("⬇️ Download del video e lettura didascalia in corso..."):
                     pass
-                with st.spinner("🤖 Gemini sta guardando il video ed estraendo la ricetta..."):
-                    recipe_data = download_and_analyze_link(video_url)
+                with st.spinner("🤖 Gemini sta incrociando video e descrizione..."):
+                    recipe_data = download_and_analyze_link(video_url, manual_desc_link)
 
             except Exception as e:
                 st.error(f"❌ Errore durante l'estrazione: {e}\n\n"
-                         f"💡 **Alternativa:** Usa la scheda **'Carica Video Manuale'**.")
+                         f"💡 **Suggerimento:** Incolla gli ingredienti nella casella sopra o usa la scheda **'Carica Video Manuale'**.")
 
 # TAB 2: CARICAMENTO FILE MANUALE
 with tab2:
     uploaded_file = st.file_uploader("Seleziona un video dalla tua galleria (.mp4, .mov)", type=["mp4", "mov"])
+    manual_desc_file = st.text_area("📝 (Opzionale) Aggiungi note o dosi per questo video:", placeholder="Es. Usare latte di mandorla...")
+    
     if uploaded_file and st.button("👨‍🍳 Analizza Video Caricato"):
         if not API_KEY:
             st.error("🔑 Manca l'API Key nei Secrets.")
         else:
             try:
                 with st.spinner("🤖 Analisi visiva e audio del video in corso con Gemini..."):
-                    recipe_data = process_uploaded_video(uploaded_file)
+                    recipe_data = process_uploaded_video(uploaded_file, manual_desc_file)
             except Exception as e:
                 st.error(f"❌ Errore durante l'analisi del video: {e}")
 
@@ -266,7 +271,6 @@ else:
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
 
-        # Titolo della tendina con nome e macro in evidenza
         expander_title = f"🍳 {titolo}  |  🔥 {cal}  |  💪 Pro: {pro}  |  🍚 Carb: {carb}  |  🥑 Grassi: {fat}"
 
         with st.expander(expander_title):
