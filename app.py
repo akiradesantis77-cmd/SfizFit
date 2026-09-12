@@ -19,6 +19,13 @@ st.markdown("""
 h1, h2, h3 { color: #A3E635 !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
 p, label, .stCaption { color: #E2E8F0 !important; }
 
+/* Stile per ingrandire il titolo dell'expander (anteprima in home) */
+.streamlit-expanderHeader p {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #A3E635 !important;
+}
+
 .recipe-content {
     background-color: #FFFFFF;
     padding: 20px;
@@ -277,7 +284,7 @@ if recipe_data:
     st.rerun()
 
 # =========================================================
-# 6. ARCHIVIO A TENDINA (EXPANDER) CON TITOLO GRANDE E MACRO SOTTO
+# 6. ARCHIVIO A TENDINA (EXPANDER) CON SOLO TITOLO IN ANTEPRIMA
 # =========================================================
 st.markdown("---")
 st.subheader("📚 Il tuo Ricettario SfizFit")
@@ -292,14 +299,14 @@ else:
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
 
-        # Titolo della tendina in home (compatto)
-        expander_title = f"🍳 {titolo}  |  🔥 {cal}"
+        # In home si vede solo il titolo (più grande grazie al CSS dedicato)
+        expander_title = f"🍳 {titolo}"
 
         with st.expander(expander_title):
             ingr_html = "".join([f"<li>{ing}</li>" for ing in item.get("ingredienti", [])])
             proc_html = "".join([f"<li>{step}</li>" for step in item.get("procedimento", [])])
 
-            # Scheda interna con Titolo grande e centrale, seguito dai macronutrienti più piccoli sotto
+            # All'interno dell'espansione c'è il titolo grande e i macro in pillole sotto
             st.markdown(f"""
             <div class="recipe-content">
                 <div class="recipe-title-large">🍳 {titolo}</div>
