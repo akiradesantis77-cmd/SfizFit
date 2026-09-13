@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (LAYOUT VERTICALE E PILLOLE MACRO)
+# 1. STILE E TEMA DARK (FOTO ORIZZONTALE FULL & BOTTONI FULL WIDTH)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
 
@@ -42,7 +42,7 @@ p, label, span, div {
 
 /* Header & Titolo */
 .header-title {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     color: #FFFFFF;
     margin-bottom: 12px;
@@ -58,11 +58,11 @@ div[data-baseweb="input"] input {
     color: #FFFFFF !important;
 }
 
-/* CARD RICETTA (Titolo centrato in alto, Immagine centrata) */
+/* CARD RICETTA CON FOTO A TUTTA LARGHEZZA */
 .recipe-card {
     background-color: #1E1E1E;
     border-radius: 16px;
-    padding: 14px;
+    padding: 12px;
     margin-bottom: 6px;
     border: 1px solid #2D2D2D;
     text-align: center;
@@ -73,35 +73,26 @@ div[data-baseweb="input"] input {
     font-weight: 700;
     color: #FFFFFF !important;
     text-align: center;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     line-height: 1.3;
 }
 
-.card-img-wrapper {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background-color: #141414;
-    border-radius: 12px;
-    overflow: hidden;
+/* Immagine orizzontale che riempie interamente il box */
+.card-img-full {
+    width: 100% !important;
+    height: 180px !important;
+    object-fit: cover !important;
+    object-position: center !important;
+    border-radius: 12px !important;
+    display: block !important;
 }
 
-.card-img-centered {
-    max-width: 100%;
-    max-height: 320px;
-    object-fit: contain;
-    display: block;
-    margin: 0 auto;
-    border-radius: 12px;
-}
-
-/* PILLOLE MACRONUTRIENTI IN RIGA (Nomi sopra le pillole) */
+/* PILLOLE MACRONUTRIENTI IN RIGA */
 .macro-container {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     margin: 10px 0 16px 0;
     width: 100%;
 }
@@ -115,25 +106,23 @@ div[data-baseweb="input"] input {
 }
 
 .macro-label {
-    font-size: 10px;
+    font-size: 9px !important;
     font-weight: 700;
     color: #94A3B8 !important;
     margin-bottom: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.2px;
     white-space: nowrap;
 }
 
 .macro-pill {
     width: 100%;
     text-align: center;
-    padding: 6px 2px;
+    padding: 6px 0;
     border-radius: 20px;
     font-size: 11px;
     font-weight: 700;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 /* Colori Pillole */
@@ -142,24 +131,35 @@ div[data-baseweb="input"] input {
 .pill-carb { background-color: #3B2514; color: #FDBA74 !important; border: 1px solid #7C2D12; }
 .pill-fat { background-color: #1A2B4C; color: #93C5FD !important; border: 1px solid #1E3A8A; }
 
-/* Stile Expander */
+/* Stile Expander Dettagli */
 div[data-testid="stExpander"] {
     border: 1px solid #2D2D2D !important;
     border-radius: 12px !important;
     background-color: #181818 !important;
-    margin-bottom: 12px !important;
+    margin-bottom: 14px !important;
 }
 
-/* Bottoni */
-div.stButton > button, div.stDownloadButton > button {
+/* BOTTONI A TUTTA LARGHEZZA (CENTRATURA TESTO E ICONA) */
+div.stButton > button, div.stDownloadButton > button, div.stLinkButton > a {
     background-color: #2D6A4F !important;
     color: white !important;
     border-radius: 10px !important;
     border: none !important;
-    height: 38px !important;
+    height: 42px !important;
     font-weight: 600 !important;
-    width: 100%;
+    width: 100% !important;
     font-size: 13px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+    text-decoration: none !important;
+    margin-bottom: 6px !important;
+}
+
+div.stButton > button p, div.stDownloadButton > button p {
+    color: white !important;
+    margin: 0 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -342,7 +342,7 @@ def process_uploaded_video(uploaded_file):
 # =========================================================
 # 5. HEADER & AGGIUNTA NUOVA RICETTA
 # =========================================================
-st.markdown('<div class="header-title">Tutte le Ricette</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">👨‍🍳 SfizFit</div>', unsafe_allow_html=True)
 
 with st.expander("➕ Aggiungi Nuova Ricetta"):
     tab1, tab2 = st.tabs(["🔗 Link Social", "📁 Carica File"])
@@ -378,7 +378,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
 search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
 # =========================================================
-# 7. BACKUP & RIPRISTINO (SOTTO LA BARRA DI RICERCA)
+# 7. BACKUP & RIPRISTINO (SUBITO SOTTO LA RICERCA)
 # =========================================================
 with st.expander("⚙️ Backup & Ripristino"):
     backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
@@ -398,7 +398,7 @@ with st.expander("⚙️ Backup & Ripristino"):
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================================================
-# 8. ELENCO RICETTE (LAYOUT VERTICALE CON FOTO E MACRO PILLS)
+# 8. ELENCO RICETTE (LAYOUT VERTICALE CON FOTO FULL E MACRO)
 # =========================================================
 filtered_recipes = [
     r for r in st.session_state.recipes 
@@ -417,18 +417,17 @@ else:
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
         img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
+        video_url = item.get("url")
 
-        # Scheda con Titolo Centrato in Alto e Foto Centrata
+        # Scheda con Titolo Centrato in Alto e Foto Orizzontale a Tutto Spazio
         st.markdown(f"""
         <div class="recipe-card">
             <div class="card-title-top">{titolo}</div>
-            <div class="card-img-wrapper">
-                <img src="{img_src}" class="card-img-centered" />
-            </div>
+            <img src="{img_src}" class="card-img-full" />
         </div>
         """, unsafe_allow_html=True)
         
-        # Expander Dettagli con Pillole Macronutrienti in linea
+        # Expander Dettagli
         with st.expander("📖 Dettagli"):
             st.markdown(f"""
             <div class="macro-container">
@@ -441,7 +440,7 @@ else:
                     <span class="macro-pill pill-prot">{prot}</span>
                 </div>
                 <div class="macro-box">
-                    <span class="macro-label">Carbo</span>
+                    <span class="macro-label">Carboidrati</span>
                     <span class="macro-pill pill-carb">{carb}</span>
                 </div>
                 <div class="macro-box">
@@ -459,8 +458,17 @@ else:
             for p_idx, step in enumerate(item.get("procedimento", []), 1):
                 st.write(f"{p_idx}. {step}")
             
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Pulsante Video Originale (se disponibile)
+            if video_url and video_url != "#":
+                st.link_button("🎥 Guarda Video Originale", video_url)
+
+            # Pulsante Scarica Ricetta
             recipe_txt = format_recipe_text(item)
             st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}")
+            
+            # Pulsante Elimina Ricetta
             if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}"):
                 st.session_state.recipes.pop(idx)
                 save_recipes(st.session_state.recipes)
