@@ -132,7 +132,16 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+# Gestione flessibile delle chiavi API nei Secrets di Streamlit:
+# Supporta sia GEMINI_API_KEYS (lista) che GEMINI_API_KEY (chiave singola)
+api_keys_raw = st.secrets.get("GEMINI_API_KEYS", st.secrets.get("GEMINI_API_KEY", []))
+
+if isinstance(api_keys_raw, str):
+    API_KEYS = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
+elif isinstance(api_keys_raw, list):
+    API_KEYS = [str(k).strip() for k in api_keys_raw if str(k).strip()]
+else:
+    API_KEYS = []
 
 # =========================================================
 # 2. FUNZIONI DI GESTIONE ARCHIVIO LOCALE
@@ -173,64 +182,81 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (AUTOMATICO)
+# 3. ENGINE IA: GOOGLE GENAI (AUTOMATICO CON ROTAZIONE CHIAVI)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
-    if not API_KEY:
-        raise Exception("API Key non trovata nei Secrets di Streamlit.")
-        
-    client = genai.Client(api_key=API_KEY.strip())
-    
-    with open(file_path, "rb") as f:
-        uploaded_video = client.files.upload(
-            file=f,
-            config=types.UploadFileConfig(mime_type="video/mp4")
-        )
-    
-    while uploaded_video.state.name == "PROCESSING":
-        time.sleep(2)
-        uploaded_video = client.files.get(name=uploaded_video.name)
+    if not API_KEYS:
+        raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    if uploaded_video.state.name == "FAILED":
-        raise Exception("Impossibile elaborare il file video con Gemini.")
+    last_exception = None
 
-    prompt = f"""
-    Analizza con la massima precisione questo video di cucina. 
-    1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
-    2. Ascolta la voce guida e l'audio.
-    3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
-    
-    ATTENZIONE: Se ci sono discrepanze tra la descrizione testuale e ciò che viene detto nel video, dai priorità alle quantità esatte indicate nel testo a schermo o nella descrizione ufficiale del post per gli ingredienti.
-    
-    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
-    
-    Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
-    {{
-        "titolo": "Nome del piatto",
-        "calorie": "450 kcal",
-        "proteine": "35g",
-        "carboidrati": "40g",
-        "grassi": "15g",
-        "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
-        "procedimento": ["passo 1", "passo 2"]
-    }}
-    """
-    
-    try:
-        response = client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=[uploaded_video, prompt]
-        )
-    finally:
+    # Cicla su ciascuna API Key configurata nei Secrets
+    for current_key in API_KEYS:
         try:
-            client.files.delete(name=uploaded_video.name)
-        except Exception:
-            pass
+            client = genai.Client(api_key=current_key)
 
-    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(0))
-    raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
+            with open(file_path, "rb") as f:
+                uploaded_video = client.files.upload(
+                    file=f,
+                    config=types.UploadFileConfig(mime_type="video/mp4")
+                )
+
+            while uploaded_video.state.name == "PROCESSING":
+                time.sleep(2)
+                uploaded_video = client.files.get(name=uploaded_video.name)
+
+            if uploaded_video.state.name == "FAILED":
+                raise Exception("Impossibile elaborare il file video con Gemini.")
+
+            prompt = f"""
+            Analizza con la massima precisione questo video di cucina. 
+            1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
+            2. Ascolta la voce guida e l'audio.
+            3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
+
+            ATTENZIONE: Se ci sono discrepanze tra la descrizione testuale e ciò che viene detto nel video, dai priorità alle quantità esatte indicate nel testo a schermo o nella descrizione ufficiale del post per gli ingredienti.
+
+            Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
+
+            Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
+            {{
+                "titolo": "Nome del piatto",
+                "calorie": "450 kcal",
+                "proteine": "35g",
+                "carboidrati": "40g",
+                "grassi": "15g",
+                "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
+                "procedimento": ["passo 1", "passo 2"]
+            }}
+            """
+
+            try:
+                response = client.models.generate_content(
+                    model='gemini-3.6-flash',
+                    contents=[uploaded_video, prompt]
+                )
+            finally:
+                try:
+                    client.files.delete(name=uploaded_video.name)
+                except Exception:
+                    pass
+
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
+
+        except Exception as e:
+            err_msg = str(e).lower()
+            # Se la chiave ha esaurito la quota o ha raggiunto i limiti (429/Resource Exhausted), passa alla chiave successiva
+            if "429" in str(e) or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg:
+                last_exception = e
+                continue
+            else:
+                # Per altri errori (es. problemi di connessione o formato) interrompe l'esecuzione
+                raise e
+
+    raise Exception(f"Tutte le API Key configurate hanno raggiunto il limite giornaliero. Ultimo errore: {last_exception}")
 
 # =========================================================
 # 4. ESTRAZIONE AUTOMATICA DA LINK
@@ -290,8 +316,8 @@ def process_uploaded_video(uploaded_file):
 st.title("👨‍🍳 SfizFit")
 st.caption("Estrai ricette e macronutrienti in modo 100% automatico da Reels, TikTok o file.")
 
-if not API_KEY:
-    st.error("⚠️ **Attenzione:** Configura la variabile `GEMINI_API_KEY` nei Secrets di Streamlit Cloud per procedere.")
+if not API_KEYS:
+    st.error("⚠️ **Attenzione:** Configura `GEMINI_API_KEYS` nei Secrets di Streamlit Cloud per procedere.")
 
 st.markdown("---")
 
@@ -303,7 +329,7 @@ recipe_data = None
 with tab1:
     video_url = st.text_input("Incolla qui il link del Reel o TikTok:", placeholder="https://www.instagram.com/reel/...")
     if st.button("🚀 Estrai Ricetta in Automatico"):
-        if not API_KEY:
+        if not API_KEYS:
             st.error("🔑 Manca l'API Key nei Secrets.")
         elif not video_url:
             st.warning("⚠️ Inserisci un link valido.")
@@ -321,7 +347,7 @@ with tab1:
 with tab2:
     uploaded_file = st.file_uploader("Seleziona un video dalla tua galleria (.mp4, .mov)", type=["mp4", "mov"])
     if uploaded_file and st.button("👨‍🍳 Analizza Video Caricato"):
-        if not API_KEY:
+        if not API_KEYS:
             st.error("🔑 Manca l'API Key nei Secrets.")
         else:
             try:
