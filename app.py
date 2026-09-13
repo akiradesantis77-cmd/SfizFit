@@ -79,7 +79,7 @@ div[data-baseweb="input"] input {
 
 .card-img-full {
     width: 100% !important;
-    height: 180px !important;
+    height: 40vh !important;
     object-fit: cover !important;
     object-position: center !important;
     border-radius: 12px !important;
