@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (CON REDUZIONE SPAZIO IN ALTO)
+# 1. STILE E TEMA DARK (CON TESTO MULTILINEA NELLE PILLOLE)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
 
@@ -25,7 +25,7 @@ st.markdown("""
     background-color: #121212 !important; 
 }
 
-/* RIDUZIONE DELLO SPAZIO VUOTO IN ALTO */
+/* Riduzione spazio vuoto in alto */
 .block-container, div[data-testid="stAppViewBlockContainer"] {
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
@@ -92,11 +92,11 @@ div[data-baseweb="input"] input {
     display: block !important;
 }
 
-/* PILLOLE MACRONUTRIENTI */
+/* PILLOLE MACRONUTRIENTI CON ANDATA A CAPO */
 .macro-container {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     gap: 4px;
     margin: 10px 0 16px 0;
     width: 100%;
@@ -123,11 +123,17 @@ div[data-baseweb="input"] input {
 .macro-pill {
     width: 100%;
     text-align: center;
-    padding: 6px 0;
-    border-radius: 20px;
+    padding: 6px 4px;
+    border-radius: 14px;
     font-size: 11px;
     font-weight: 700;
-    white-space: nowrap;
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.2;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 /* Colori Pillole */
