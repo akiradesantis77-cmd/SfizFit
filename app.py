@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (DESIGN GRID E CARD)
+# 1. STILE E TEMA DARK (GRIGLIA MOBILE A 2 COLONNE E FOTO ORIZZONTALI)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
 
@@ -27,7 +27,7 @@ st.markdown("""
 
 /* Tipografia */
 h1, h2, h3 { 
-    color: #A3E635 !important; 
+    color: #FFFFFF !important; 
     font-family: 'Helvetica Neue', sans-serif; 
     font-weight: 700; 
 }
@@ -40,43 +40,61 @@ p, label, span, div {
     visibility: hidden; display: none;
 }
 
+/* FORZA 2 COLONNE AFFIANCATE ANCHE SU SMARTPHONE (DISPOSITIVI MOBILI) */
+div[data-testid="stHorizontalBlock"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+}
+div[data-testid="column"] {
+    width: 50% !important;
+    flex: 1 1 50% !important;
+    min-width: 0 !important;
+}
+
 /* Header & Titolo */
 .header-title {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 800;
-    color: #A3E635;
+    color: #FFFFFF;
     margin-bottom: 12px;
 }
 
-/* Input Cerca e Testo */
+/* Input Cerca */
 div[data-baseweb="input"] {
     background-color: #1E1E1E !important;
     border-radius: 12px !important;
-    border: 1px solid #333333 !important;
+    border: 1px solid #2D2D2D !important;
 }
 div[data-baseweb="input"] input {
     color: #FFFFFF !important;
 }
 
-/* Card Ricetta in Griglia Scura */
+/* Card Ricetta Compatta */
 .recipe-card {
     background-color: #1E1E1E;
-    border-radius: 18px;
-    padding: 10px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    margin-bottom: 12px;
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    margin-bottom: 4px;
     border: 1px solid #2D2D2D;
     text-align: left;
 }
+
+/* RITAGLIO ORIZZONTALE DELLE ANTEPRIME (Formato Rettangolare Basso) */
 .card-img {
-    width: 100%;
-    height: 130px;
-    object-fit: cover;
-    border-radius: 14px;
-    margin-bottom: 8px;
+    width: 100% !important;
+    height: 105px !important; /* Altezza fissa orizzontale */
+    object-fit: cover !important; /* Taglia l'immagine verticale del reel al centro in orizzontale */
+    object-position: center !important;
+    border-radius: 10px !important;
+    margin-bottom: 8px !important;
+    display: block !important;
 }
+
 .card-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: #FFFFFF !important;
     line-height: 1.2;
@@ -85,33 +103,37 @@ div[data-baseweb="input"] input {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    height: 34px;
+    height: 32px;
 }
 .card-subtext {
     font-size: 11px;
     color: #A3E635 !important;
-    font-weight: 600;
-    margin-bottom: 6px;
+    font-weight: 700;
+    margin-bottom: 2px;
 }
 
-/* Bottoni Moderni */
+/* Stile Expander Dettagli Compatto */
+div[data-testid="stExpander"] {
+    border: 1px solid #2D2D2D !important;
+    border-radius: 12px !important;
+    background-color: #181818 !important;
+    margin-bottom: 10px !important;
+}
+div[data-testid="stExpander"] summary {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+}
+
+/* Bottoni */
 div.stButton > button, div.stDownloadButton > button {
     background-color: #2D6A4F !important;
     color: white !important;
-    border-radius: 12px !important;
+    border-radius: 10px !important;
     border: none !important;
-    height: 38px !important;
+    height: 36px !important;
     font-weight: 600 !important;
     width: 100%;
-    font-size: 13px !important;
-}
-
-/* Stile Personalizzato Expander in Scuro */
-.streamlit-expanderHeader {
-    background-color: #1E1E1E !important;
-    border-radius: 12px !important;
-    color: #E2E8F0 !important;
-    border: 1px solid #2D2D2D !important;
+    font-size: 12px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -164,7 +186,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE CHIAVI)
+# 3. ENGINE IA: GOOGLE GENAI
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
@@ -294,7 +316,7 @@ def process_uploaded_video(uploaded_file):
 # =========================================================
 # 5. HEADER & AGGIUNTA NUOVA RICETTA
 # =========================================================
-st.markdown('<div class="header-title">👨‍🍳 SfizFit</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">Tutte le Ricette</div>', unsafe_allow_html=True)
 
 with st.expander("➕ Aggiungi Nuova Ricetta"):
     tab1, tab2 = st.tabs(["🔗 Link Social", "📁 Carica File"])
@@ -330,7 +352,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
 search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
 # =========================================================
-# 7. GRIGLIA A 2 COLONNE (TEMA SCURO)
+# 7. GRIGLIA A 2 COLONNE COMPATTA
 # =========================================================
 filtered_recipes = [
     r for r in st.session_state.recipes 
@@ -340,43 +362,50 @@ filtered_recipes = [
 if not filtered_recipes:
     st.info("Nessuna ricetta presente.")
 else:
-    cols = st.columns(2)
     default_img = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
 
-    for idx, item in enumerate(filtered_recipes):
-        col = cols[idx % 2]
-        titolo = item.get('titolo', 'Ricetta')
-        cal = item.get('calorie', 'N/D')
-        img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
+    # Generazione coppie di ricette per riempire la griglia a 2 colonne
+    for i in range(0, len(filtered_recipes), 2):
+        cols = st.columns(2)
+        batch = filtered_recipes[i:i+2]
 
-        with col:
-            st.markdown(f"""
-            <div class="recipe-card">
-                <img src="{img_src}" class="card-img" />
-                <div class="card-title">{titolo}</div>
-                <div class="card-subtext">🔥 {cal}</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            with st.expander("📖 Dettagli"):
-                st.markdown(f"**Calorie:** {cal} | **Proteine:** {item.get('proteine', 'N/D')}")
-                st.markdown(f"**Carboidrati:** {item.get('carboidrati', 'N/D')} | **Grassi:** {item.get('grassi', 'N/D')}")
-                st.markdown("**🛒 Ingredienti:**")
-                for ing in item.get("ingredienti", []):
-                    st.write(f"- {ing}")
-                st.markdown("**👨‍🍳 Procedimento:**")
-                for p_idx, step in enumerate(item.get("procedimento", []), 1):
-                    st.write(f"{p_idx}. {step}")
+        for idx, item in enumerate(batch):
+            col = cols[idx]
+            titolo = item.get('titolo', 'Ricetta')
+            cal = item.get('calorie', 'N/D')
+            img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
+            global_idx = i + idx
+
+            with col:
+                st.markdown(f"""
+                <div class="recipe-card">
+                    <img src="{img_src}" class="card-img" />
+                    <div class="card-title">{titolo}</div>
+                    <div class="card-subtext">🔥 {cal}</div>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                recipe_txt = format_recipe_text(item)
-                st.download_button("📄 Scarica", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}")
-                if st.button("🗑️ Elimina", key=f"del_{idx}"):
-                    st.session_state.recipes.pop(idx)
-                    save_recipes(st.session_state.recipes)
-                    st.rerun()
+                with st.expander("📖 Dettagli"):
+                    st.markdown(f"**Calorie:** {cal}")
+                    st.markdown(f"**Proteine:** {item.get('proteine', 'N/D')}")
+                    st.markdown(f"**Carboidrati:** {item.get('carboidrati', 'N/D')}")
+                    st.markdown(f"**Grassi:** {item.get('grassi', 'N/D')}")
+                    st.markdown("**🛒 Ingredienti:**")
+                    for ing in item.get("ingredienti", []):
+                        st.write(f"- {ing}")
+                    st.markdown("**👨‍🍳 Procedimento:**")
+                    for p_idx, step in enumerate(item.get("procedimento", []), 1):
+                        st.write(f"{p_idx}. {step}")
+                    
+                    recipe_txt = format_recipe_text(item)
+                    st.download_button("📄 Scarica", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{global_idx}")
+                    if st.button("🗑️ Elimina", key=f"del_{global_idx}"):
+                        st.session_state.recipes.pop(global_idx)
+                        save_recipes(st.session_state.recipes)
+                        st.rerun()
 
 # =========================================================
-# 8. GESTIONE BACKUP (IN FONDO)
+# 8. GESTIONE BACKUP
 # =========================================================
 st.markdown("---")
 with st.expander("⚙️ Backup & Ripristino"):
