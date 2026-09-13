@@ -151,7 +151,7 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] {
 div[data-testid="stExpander"] div[data-testid="stButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a {
-    background-color: #16A34A !important;
+    background-color: #414542 !important;
     color: #FFFFFF !important;
     border-radius: 10px !important;
     border: none !important;
