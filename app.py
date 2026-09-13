@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (FOTO ORIZZONTALE FULL & BOTTONI FULL WIDTH)
+# 1. STILE E TEMA DARK (BOTTONI VERDI FULL WIDTH COME IN FOTO 2)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
 
@@ -40,7 +40,7 @@ p, label, span, div {
     visibility: hidden; display: none;
 }
 
-/* Header & Titolo */
+/* Header & Titolo App */
 .header-title {
     font-size: 26px;
     font-weight: 800;
@@ -58,7 +58,7 @@ div[data-baseweb="input"] input {
     color: #FFFFFF !important;
 }
 
-/* CARD RICETTA CON FOTO A TUTTA LARGHEZZA */
+/* CARD RICETTA */
 .recipe-card {
     background-color: #1E1E1E;
     border-radius: 16px;
@@ -77,7 +77,6 @@ div[data-baseweb="input"] input {
     line-height: 1.3;
 }
 
-/* Immagine orizzontale che riempie interamente il box */
 .card-img-full {
     width: 100% !important;
     height: 180px !important;
@@ -87,7 +86,7 @@ div[data-baseweb="input"] input {
     display: block !important;
 }
 
-/* PILLOLE MACRONUTRIENTI IN RIGA */
+/* PILLOLE MACRONUTRIENTI */
 .macro-container {
     display: flex;
     justify-content: space-between;
@@ -139,27 +138,54 @@ div[data-testid="stExpander"] {
     margin-bottom: 14px !important;
 }
 
-/* BOTTONI A TUTTA LARGHEZZA (CENTRATURA TESTO E ICONA) */
-div.stButton > button, div.stDownloadButton > button, div.stLinkButton > a {
-    background-color: #2D6A4F !important;
-    color: white !important;
+/* FORZA CONTENITORI BOTTONI A OCCUPARE IL 100% DELLA LARGHEZZA */
+div[data-testid="stExpander"] div[data-testid="stElementContainer"],
+div[data-testid="stExpander"] div[data-testid="stButton"], 
+div[data-testid="stExpander"] div[data-testid="stDownloadButton"], 
+div[data-testid="stExpander"] div[data-testid="stLinkButton"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* STILE VERDE SMERALDO BRILLANTE E FULL-WIDTH PER I PULSANTI (COME FOTO 2) */
+div[data-testid="stExpander"] div[data-testid="stButton"] > button, 
+div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button, 
+div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a {
+    background-color: #16A34A !important;
+    color: #FFFFFF !important;
     border-radius: 10px !important;
     border: none !important;
-    height: 42px !important;
-    font-weight: 600 !important;
+    height: 46px !important;
+    font-weight: 700 !important;
     width: 100% !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     text-align: center !important;
     text-decoration: none !important;
-    margin-bottom: 6px !important;
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
-div.stButton > button p, div.stDownloadButton > button p {
-    color: white !important;
-    margin: 0 !important;
+/* EFFETTO HOVER */
+div[data-testid="stExpander"] div[data-testid="stButton"] > button:hover, 
+div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button:hover, 
+div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
+    background-color: #22C55E !important;
+    color: #FFFFFF !important;
+}
+
+/* ALLINEAMENTO CENTRATO DI TESTO E ICONE INTERNE */
+div[data-testid="stExpander"] div[data-testid="stButton"] button *, 
+div[data-testid="stExpander"] div[data-testid="stDownloadButton"] button *, 
+div[data-testid="stExpander"] div[data-testid="stLinkButton"] a * {
+    color: #FFFFFF !important;
+    text-align: center !important;
+    justify-content: center !important;
+    display: inline-flex !important;
+    align-items: center !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -350,7 +376,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
     
     with tab1:
         video_url = st.text_input("Link Reel / TikTok:", placeholder="https://www.instagram.com/reel/...")
-        if st.button("🚀 Estrai Ricetta"):
+        if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
                     with st.spinner("🤖 Analisi ed estrazione in corso..."):
@@ -359,7 +385,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                     st.error(f"Errore: {e}")
     with tab2:
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
-        if uploaded_file and st.button("👨‍🍳 Analizza Video"):
+        if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
             try:
                 with st.spinner("🤖 Analisi in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
@@ -382,7 +408,7 @@ search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visi
 # =========================================================
 with st.expander("⚙️ Backup & Ripristino"):
     backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
-    st.download_button("📥 Scarica Backup JSON", backup_json_str, file_name="sfizfit_backup.json", mime="application/json")
+    st.download_button("📥 Scarica Backup JSON", backup_json_str, file_name="sfizfit_backup.json", mime="application/json", use_container_width=True)
     uploaded_backup = st.file_uploader("Ripristina file backup", type=["json"])
     if uploaded_backup is not None:
         try:
@@ -398,7 +424,7 @@ with st.expander("⚙️ Backup & Ripristino"):
 st.markdown("<br>", unsafe_allow_html=True)
 
 # =========================================================
-# 8. ELENCO RICETTE (LAYOUT VERTICALE CON FOTO FULL E MACRO)
+# 8. ELENCO RICETTE
 # =========================================================
 filtered_recipes = [
     r for r in st.session_state.recipes 
@@ -460,16 +486,14 @@ else:
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Pulsante Video Originale (se disponibile)
+            # Pulsanti Verdi Full Width (Occupano al 100% la larghezza del box)
             if video_url and video_url != "#":
-                st.link_button("🎥 Guarda Video Originale", video_url)
+                st.link_button("🎥 Guarda Video Originale", video_url, use_container_width=True)
 
-            # Pulsante Scarica Ricetta
             recipe_txt = format_recipe_text(item)
-            st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}")
+            st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}", use_container_width=True)
             
-            # Pulsante Elimina Ricetta
-            if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}"):
+            if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}", use_container_width=True):
                 st.session_state.recipes.pop(idx)
                 save_recipes(st.session_state.recipes)
                 st.rerun()
