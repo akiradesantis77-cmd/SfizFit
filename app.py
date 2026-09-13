@@ -11,7 +11,7 @@ import yt_dlp
 # =========================================================
 # 1. STILE E TEMA DARK (CON TESTO MULTILINEA NELLE PILLOLE)
 # =========================================================
-st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
+st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="🥐", layout="centered")
 
 try:
     st.set_option("client.toolbarMode", "minimal")
