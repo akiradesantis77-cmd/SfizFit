@@ -378,7 +378,7 @@ def process_uploaded_video(uploaded_file):
 # =========================================================
 # 5. HEADER & AGGIUNTA NUOVA RICETTA
 # =========================================================
-st.markdown('<div class="header-title">👨‍🍳 SfizFit - Ricette & Macros</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">🥐 SfizFit - Ricette & Macros</div>', unsafe_allow_html=True)
 
 with st.expander("➕ Aggiungi Nuova Ricetta"):
     tab1, tab2 = st.tabs(["🔗 Link Social", "📁 Carica File"])
@@ -389,7 +389,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("🤖 Solo un attimo meraviglia..."):
+                    with st.spinner("✨ Solo un attimo meraviglia..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
                     st.error(f"Errore: {e}")
