@@ -9,7 +9,7 @@ from google.genai import types
 import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (BOTTONI VERDI FULL WIDTH COME IN FOTO 2)
+# 1. STILE E TEMA DARK (CON REDUZIONE SPAZIO IN ALTO)
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricettario", page_icon="🍳", layout="centered")
 
@@ -23,6 +23,12 @@ st.markdown("""
 /* Sfondo Generale Scuro */
 .stApp { 
     background-color: #121212 !important; 
+}
+
+/* RIDUZIONE DELLO SPAZIO VUOTO IN ALTO */
+.block-container, div[data-testid="stAppViewBlockContainer"] {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
 }
 
 /* Tipografia */
@@ -79,7 +85,7 @@ div[data-baseweb="input"] input {
 
 .card-img-full {
     width: 100% !important;
-    height: 40vh !important;
+    height: 180px !important;
     object-fit: cover !important;
     object-position: center !important;
     border-radius: 12px !important;
@@ -147,11 +153,11 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] {
     max-width: 100% !important;
 }
 
-/* STILE VERDE SMERALDO BRILLANTE E FULL-WIDTH PER I PULSANTI (COME FOTO 2) */
+/* STILE VERDE SMERALDO FULL-WIDTH PER I PULSANTI */
 div[data-testid="stExpander"] div[data-testid="stButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a {
-    background-color: #414542 !important;
+    background-color: #16A34A !important;
     color: #FFFFFF !important;
     border-radius: 10px !important;
     border: none !important;
@@ -169,7 +175,6 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a {
     box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* EFFETTO HOVER */
 div[data-testid="stExpander"] div[data-testid="stButton"] > button:hover, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button:hover, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
@@ -177,7 +182,6 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
     color: #FFFFFF !important;
 }
 
-/* ALLINEAMENTO CENTRATO DI TESTO E ICONE INTERNE */
 div[data-testid="stExpander"] div[data-testid="stButton"] button *, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] button *, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] a * {
@@ -379,7 +383,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("🤖 Analisi ed estrazione in corso..."):
+                    with st.spinner("🤖 Solo un attimo meraviglia..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
                     st.error(f"Errore: {e}")
@@ -404,7 +408,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
 search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
 # =========================================================
-# 7. BACKUP & RIPRISTINO (SUBITO SOTTO LA RICERCA)
+# 7. BACKUP & RIPRISTINO
 # =========================================================
 with st.expander("⚙️ Backup & Ripristino"):
     backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
@@ -445,7 +449,6 @@ else:
         img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
         video_url = item.get("url")
 
-        # Scheda con Titolo Centrato in Alto e Foto Orizzontale a Tutto Spazio
         st.markdown(f"""
         <div class="recipe-card">
             <div class="card-title-top">{titolo}</div>
@@ -453,7 +456,6 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # Expander Dettagli
         with st.expander("📖 Dettagli"):
             st.markdown(f"""
             <div class="macro-container">
@@ -486,7 +488,6 @@ else:
             
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # Pulsanti Verdi Full Width (Occupano al 100% la larghezza del box)
             if video_url and video_url != "#":
                 st.link_button("🎥 Guarda Video Originale", video_url, use_container_width=True)
 
