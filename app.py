@@ -378,7 +378,7 @@ def process_uploaded_video(uploaded_file):
 # =========================================================
 # 5. HEADER & AGGIUNTA NUOVA RICETTA
 # =========================================================
-st.markdown('<div class="header-title">👨‍🍳 SfizFit</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-title">👨‍🍳 SfizFit - Ricette & Macros</div>', unsafe_allow_html=True)
 
 with st.expander("➕ Aggiungi Nuova Ricetta"):
     tab1, tab2 = st.tabs(["🔗 Link Social", "📁 Carica File"])
