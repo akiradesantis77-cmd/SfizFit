@@ -3,6 +3,8 @@ import os
 import re
 import tempfile
 import time
+import base64
+import requests
 import streamlit as st
 from google import genai
 from google.genai import types
@@ -214,6 +216,19 @@ else:
 # =========================================================
 DATA_FILE = "recipes.json"
 
+def url_to_base64(url):
+    """Scarica l'immagine e la trasforma in una stringa indelebile permanente"""
+    if not url or not url.startswith("http"):
+        return url
+    try:
+        res = requests.get(url, timeout=8)
+        if res.status_code == 200:
+            b64 = base64.b64encode(res.content).decode("utf-8")
+            return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        pass
+    return url
+
 def load_recipes():
     if os.path.exists(DATA_FILE):
         try:
@@ -349,7 +364,8 @@ def download_and_analyze_link(url):
 
         data = analyze_video_file(temp_path, scraped_desc)
         data["url"] = url
-        data["thumbnail"] = thumbnail_url
+        # CONVERSIONE IN BASE64 SUBITO PER EVITARE CHE SCADA
+        data["thumbnail"] = url_to_base64(thumbnail_url)
         return data
     finally:
         if os.path.exists(temp_path):
@@ -419,6 +435,7 @@ search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visi
 with st.expander("⚙️ Backup & Ripristino"):
     backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
     st.download_button("📥 Scarica Backup JSON", backup_json_str, file_name="sfizfit_backup.json", mime="application/json", use_container_width=True)
+    
     uploaded_backup = st.file_uploader("Ripristina file backup", type=["json"])
     if uploaded_backup is not None:
         try:
@@ -430,6 +447,50 @@ with st.expander("⚙️ Backup & Ripristino"):
                 st.rerun()
         except Exception:
             st.error("File non valido.")
+
+    st.markdown("---")
+    st.markdown("**🛠️ Strumenti Manutenzione**")
+    if st.button("🔄 Ripara e Converti Immagini Scadute", use_container_width=True):
+        if not st.session_state.recipes:
+            st.warning("Nessuna ricetta presente da riparare.")
+        else:
+            progresso = st.progress(0)
+            status = st.empty()
+            
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,
+                'socket_timeout': 15,
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            tot = len(st.session_state.recipes)
+            rigenerate = 0
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                for idx, r in enumerate(st.session_state.recipes):
+                    status.text(f"Ripristino foto {idx+1}/{tot}: {r.get('titolo', '')}")
+                    url_video = r.get("url")
+                    
+                    # Ripara solo se l'immagine è assente o è ancora un link remoto
+                    current_thumb = r.get("thumbnail", "")
+                    if url_video and url_video != "#" and (not current_thumb or current_thumb.startswith("http")):
+                        try:
+                            info = ydl.extract_info(url_video, download=False)
+                            new_url = info.get("thumbnail")
+                            if new_url:
+                                r["thumbnail"] = url_to_base64(new_url)
+                                rigenerate += 1
+                        except Exception:
+                            pass
+                    progresso.progress((idx + 1) / tot)
+            
+            status.empty()
+            progresso.empty()
+            save_recipes(st.session_state.recipes)
+            st.success(f"✅ Ripristinate e convertite {rigenerate} foto con successo!")
+            st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
