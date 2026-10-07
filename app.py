@@ -163,7 +163,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         raise Exception("Il file video temporaneo è vuoto o non esiste.")
 
-    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
+    # Unico modello attivo ufficiale Google
+    MODEL_NAME = "gemini-3.8-flash"
     last_exception = None
 
     prompt = f"""
@@ -186,8 +187,8 @@ def analyze_video_file_path(file_path, video_description=""):
     }}
     """
 
-    for model_name in MODELS_TO_TRY:
-        for current_key in API_KEYS:
+    for current_key in API_KEYS:
+        for retry_count in range(2):
             try:
                 client = genai.Client(api_key=current_key)
 
@@ -197,7 +198,7 @@ def analyze_video_file_path(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                max_attempts = 15
+                max_attempts = 20
                 attempts = 0
                 while uploaded_video.state.name == "PROCESSING":
                     time.sleep(1.5)
@@ -215,7 +216,7 @@ def analyze_video_file_path(file_path, video_description=""):
                 )
 
                 response = client.models.generate_content(
-                    model=model_name,
+                    model=MODEL_NAME,
                     contents=[uploaded_video, prompt],
                     config=config
                 )
@@ -235,8 +236,9 @@ def analyze_video_file_path(file_path, video_description=""):
             except Exception as e:
                 last_exception = e
                 str_e = str(e).lower()
+                # Se c'è un picco di traffico (503 / 429), attendi prima di riprovare
                 if "503" in str_e or "unavailable" in str_e or "429" in str_e:
-                    time.sleep(1)
+                    time.sleep(2)
                     continue
                 else:
                     break
