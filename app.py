@@ -154,7 +154,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI
+# 2. ENGINE IA: GOOGLE GENAI CON FALLBACK & RETRY
 # =========================================================
 def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
@@ -163,8 +163,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         raise Exception("Il file video non esiste o è vuoto.")
 
-    # ESCLUSIVAMENTE il modello aggiornato richiesto da Google
-    MODELS_TO_TRY = ["gemini-3.8-flash"]
+    # Inclusione dei modelli alternativi per garantire il fallback se 3.8 è in "high demand"
+    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
     last_exception = None
 
     prompt = f"""
@@ -189,57 +189,65 @@ def analyze_video_file_path(file_path, video_description=""):
 
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
-            try:
-                client = genai.Client(api_key=current_key)
+            # Prova fino a 2 tentativi per modello/chiave in caso di 503 temporaneo
+            for attempt in range(2):
+                try:
+                    client = genai.Client(api_key=current_key)
 
-                with open(file_path, "rb") as f:
-                    uploaded_video = client.files.upload(
-                        file=f,
-                        config=types.UploadFileConfig(mime_type="video/mp4")
+                    with open(file_path, "rb") as f:
+                        uploaded_video = client.files.upload(
+                            file=f,
+                            config=types.UploadFileConfig(mime_type="video/mp4")
+                        )
+
+                    max_attempts = 20
+                    attempts = 0
+                    while uploaded_video.state.name == "PROCESSING":
+                        time.sleep(1.5)
+                        attempts += 1
+                        uploaded_video = client.files.get(name=uploaded_video.name)
+                        if attempts >= max_attempts:
+                            raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
+
+                    if uploaded_video.state.name == "FAILED":
+                        raise Exception("L'elaborazione del file video è fallita sui server Google.")
+
+                    config = types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
                     )
 
-                max_attempts = 20
-                attempts = 0
-                while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(1.5)
-                    attempts += 1
-                    uploaded_video = client.files.get(name=uploaded_video.name)
-                    if attempts >= max_attempts:
-                        raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[uploaded_video, prompt],
+                        config=config
+                    )
 
-                if uploaded_video.state.name == "FAILED":
-                    raise Exception("L'elaborazione del file video è fallita sui server Google.")
+                    try:
+                        client.files.delete(name=uploaded_video.name)
+                    except Exception:
+                        pass
 
-                config = types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-                )
+                    if response.text:
+                        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                        if json_match:
+                            return json.loads(json_match.group(0))
+                    
+                    raise Exception("L'IA non ha restituito un formato JSON valido.")
 
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[uploaded_video, prompt],
-                    config=config
-                )
+                except Exception as e:
+                    last_exception = e
+                    str_e = str(e).lower()
+                    
+                    # Se il server è occupato (503) o siamo in rate-limit (429), attendi e riprova o passa al modello successivo
+                    if "503" in str_e or "unavailable" in str_e or "high demand" in str_e or "429" in str_e or "quota" in str_e:
+                        time.sleep(2)
+                        continue
+                    else:
+                        # Se è un altro tipo di errore non transitorio, interrompi il loop interno
+                        break
 
-                try:
-                    client.files.delete(name=uploaded_video.name)
-                except Exception:
-                    pass
-
-                if response.text:
-                    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-                    if json_match:
-                        return json.loads(json_match.group(0))
-                
-                raise Exception("L'IA non ha restituito un formato JSON valido.")
-
-            except Exception as e:
-                last_exception = e
-                # Interrompe immediatamente se il modello non esiste/non è disponibile
-                if "404" in str(e) or "not_found" in str(e).lower():
-                    raise e
-
-    raise Exception(f"Impossibile completare l'analisi. Dettaglio: {last_exception}")
+    raise Exception(f"I server di Google sono temporaneamente sovraccarichi. Riprova tra qualche istante. Dettaglio: {last_exception}")
 
 # =========================================================
 # 3. GESTIONE INPUT
