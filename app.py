@@ -217,7 +217,7 @@ else:
 DATA_FILE = "recipes.json"
 
 def url_to_base64(url):
-    """Scarica l'immagine e la trasforma in una stringa indelebile permanente con timeout"""
+    """Scarica l'immagine e la trasforma in una stringa indelebile permanente"""
     if not url or not url.startswith("http"):
         return url
     try:
@@ -263,7 +263,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (CON TIMEOUT E ROTAZIONE)
+# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E FALLBACK MODELLI)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
@@ -283,7 +283,6 @@ def analyze_video_file(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                # Timeout per la lavorazione del video (max 20 tentativi da 2 sec = 40 secondi)
                 max_wait_attempts = 20
                 attempt_cnt = 0
                 while uploaded_video.state.name == "PROCESSING":
@@ -349,7 +348,7 @@ def analyze_video_file(file_path, video_description=""):
     raise Exception(f"Impossibile completare la richiesta. Ultimo errore: {last_exception}")
 
 # =========================================================
-# 4. DOWNLOAD E CARICAMENTO VIDEO (CON TIMEOUT RIGIDO)
+# 4. DOWNLOAD E CARICAMENTO VIDEO (CON TIMEOUT RIGIDO SUL DOWNLOAD)
 # =========================================================
 def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -360,13 +359,13 @@ def download_and_analyze_link(url):
 
     try:
         ydl_opts = {
-            'format': 'best',
+            'format': 'best[ext=mp4]/best',
             'outtmpl': temp_path,
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'socket_timeout': 12,  # Interrompe se Instagram non risponde entro 12 secondi
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'socket_timeout': 8,  # Interrompe se Instagram non risponde entro 8 secondi
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -380,7 +379,12 @@ def download_and_analyze_link(url):
         data["url"] = url
         data["thumbnail"] = url_to_base64(thumbnail_url)
         return data
+
+    except Exception as e:
+        raise Exception(f"Instagram ha bloccato il download automatico del link. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'. Dettagli: {e}")
+
     finally:
+        # 🧹 ELIMINA SUBITO IL VIDEO DAL SERVER STREAMLIT
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -398,6 +402,7 @@ def process_uploaded_video(uploaded_file):
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
     finally:
+        # 🧹 ELIMINA SUBITO IL VIDEO CARICATO MANUALMENTE
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -421,7 +426,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                     with st.spinner("✨ Solo un attimo meraviglia..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
-                    st.error(f"Errore durante l'estrazione: {e}")
+                    st.error(f"Errore: {e}")
     with tab2:
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
         if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
@@ -429,7 +434,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                 with st.spinner("🤖 Analisi in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
             except Exception as e:
-                st.error(f"Errore durante l'analisi: {e}")
+                st.error(f"Errore: {e}")
 
     if recipe_data:
         st.session_state.recipes.insert(0, recipe_data)
