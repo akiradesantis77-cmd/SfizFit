@@ -1,3 +1,4 @@
+streamlit
+google-generativeai
 yt-dlp
-google-genai
 requests
