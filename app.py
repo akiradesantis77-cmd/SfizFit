@@ -4,9 +4,9 @@ import re
 import tempfile
 import time
 import base64
-import subprocess
 import requests
 import streamlit as st
+import yt_dlp
 from google import genai
 from google.genai import types
 
@@ -154,17 +154,16 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI CON FALLBACK & RETRY
+# 2. ENGINE IA: GOOGLE GENAI
 # =========================================================
 def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        raise Exception("Il file video non esiste o è vuoto.")
+        raise Exception("Il file video temporaneo è vuoto o non esiste.")
 
-    # Inclusione dei modelli alternativi per garantire il fallback se 3.8 è in "high demand"
-    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
     last_exception = None
 
     prompt = f"""
@@ -189,110 +188,104 @@ def analyze_video_file_path(file_path, video_description=""):
 
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
-            # Prova fino a 2 tentativi per modello/chiave in caso di 503 temporaneo
-            for attempt in range(2):
+            try:
+                client = genai.Client(api_key=current_key)
+
+                with open(file_path, "rb") as f:
+                    uploaded_video = client.files.upload(
+                        file=f,
+                        config=types.UploadFileConfig(mime_type="video/mp4")
+                    )
+
+                max_attempts = 15
+                attempts = 0
+                while uploaded_video.state.name == "PROCESSING":
+                    time.sleep(1.5)
+                    attempts += 1
+                    uploaded_video = client.files.get(name=uploaded_video.name)
+                    if attempts >= max_attempts:
+                        raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
+
+                if uploaded_video.state.name == "FAILED":
+                    raise Exception("L'elaborazione del file video è fallita sui server Google.")
+
+                config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                )
+
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[uploaded_video, prompt],
+                    config=config
+                )
+
                 try:
-                    client = genai.Client(api_key=current_key)
+                    client.files.delete(name=uploaded_video.name)
+                except Exception:
+                    pass
 
-                    with open(file_path, "rb") as f:
-                        uploaded_video = client.files.upload(
-                            file=f,
-                            config=types.UploadFileConfig(mime_type="video/mp4")
-                        )
+                if response.text:
+                    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                    if json_match:
+                        return json.loads(json_match.group(0))
+                
+                raise Exception("L'IA non ha restituito un formato JSON valido.")
 
-                    max_attempts = 20
-                    attempts = 0
-                    while uploaded_video.state.name == "PROCESSING":
-                        time.sleep(1.5)
-                        attempts += 1
-                        uploaded_video = client.files.get(name=uploaded_video.name)
-                        if attempts >= max_attempts:
-                            raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
+            except Exception as e:
+                last_exception = e
+                str_e = str(e).lower()
+                if "503" in str_e or "unavailable" in str_e or "429" in str_e:
+                    time.sleep(1)
+                    continue
+                else:
+                    break
 
-                    if uploaded_video.state.name == "FAILED":
-                        raise Exception("L'elaborazione del file video è fallita sui server Google.")
-
-                    config = types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-                    )
-
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[uploaded_video, prompt],
-                        config=config
-                    )
-
-                    try:
-                        client.files.delete(name=uploaded_video.name)
-                    except Exception:
-                        pass
-
-                    if response.text:
-                        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-                        if json_match:
-                            return json.loads(json_match.group(0))
-                    
-                    raise Exception("L'IA non ha restituito un formato JSON valido.")
-
-                except Exception as e:
-                    last_exception = e
-                    str_e = str(e).lower()
-                    
-                    # Se il server è occupato (503) o siamo in rate-limit (429), attendi e riprova o passa al modello successivo
-                    if "503" in str_e or "unavailable" in str_e or "high demand" in str_e or "429" in str_e or "quota" in str_e:
-                        time.sleep(2)
-                        continue
-                    else:
-                        # Se è un altro tipo di errore non transitorio, interrompi il loop interno
-                        break
-
-    raise Exception(f"I server di Google sono temporaneamente sovraccarichi. Riprova tra qualche istante. Dettaglio: {last_exception}")
+    raise Exception(f"Errore durante l'analisi IA: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT
+# 3. GESTIONE INPUT (DOWNLOAD DIRETTAMENTE CON YT-DLP PYTHON)
 # =========================================================
 def download_and_analyze_link(url):
-    temp_path = None
+    temp_dir = tempfile.mkdtemp()
+    out_file = os.path.join(temp_dir, "video.mp4")
+
+    ydl_opts = {
+        'format': 'b[ext=mp4]/best[ext=mp4]/best',
+        'outtmpl': out_file,
+        'quiet': True,
+        'no_warnings': True,
+        'socket_timeout': 10,
+        'nocheckcertificate': True,
+    }
+
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-            temp_path = tmp_file.name
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-        cmd = [
-            "yt-dlp",
-            "--format", "b[ext=mp4]/best[ext=mp4]/best",
-            "--output", temp_path,
-            "--socket-timeout", "8",
-            "--no-check-certificate",
-            "--force-overwrites",
-            url
-        ]
-        
-        result = subprocess.run(
-            cmd, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE, 
-            text=True, 
-            timeout=15
-        )
+        if not os.path.exists(out_file) or os.path.getsize(out_file) == 0:
+            raise Exception("Il social network ha bloccato il download cloud. Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
 
-        if result.returncode != 0 or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
-            raise Exception("Instagram/TikTok bloccano i server Cloud. Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
-
-        data = analyze_video_file_path(temp_path, video_description="")
+        data = analyze_video_file_path(out_file, video_description="")
         data["url"] = url
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
 
-    except subprocess.TimeoutExpired:
-        raise Exception("Download bloccato dal server del social. Scarica il video e usa la scheda '📁 Carica File'.")
     except Exception as e:
-        raise Exception(f"{e}")
+        err_text = str(e)
+        if "unable to download" in err_text.lower() or "http error" in err_text.lower():
+            raise Exception("Instagram/TikTok bloccano i server Cloud. Scarica il video sul dispositivo ed usalo nella scheda '📁 Carica File'.")
+        raise Exception(f"{err_text}")
 
     finally:
-        if temp_path and os.path.exists(temp_path):
+        if os.path.exists(out_file):
             try:
-                os.remove(temp_path)
+                os.remove(out_file)
+            except Exception:
+                pass
+        if os.path.exists(temp_dir):
+            try:
+                os.rmdir(temp_dir)
             except Exception:
                 pass
 
@@ -332,7 +325,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Estrazione in corso..."):
+                    with st.spinner("✨ Download e analisi in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
                         st.session_state.recipes.insert(0, recipe_data)
                         save_recipes(st.session_state.recipes)
