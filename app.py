@@ -107,7 +107,7 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# Gestione API Keys nei Secrets
+# Gestione API Keys nei Secrets (Supporto sia per stringa singola che lista TOML)
 api_keys_raw = st.secrets.get("GEMINI_API_KEYS", st.secrets.get("GEMINI_API_KEY", []))
 if isinstance(api_keys_raw, str):
     API_KEYS = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
@@ -196,6 +196,7 @@ def analyze_video_file_path(file_path, video_description=""):
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
             try:
+                # Inizializza il client consentendo tutti i tipi di token AI Studio
                 client = genai.Client(api_key=current_key)
 
                 with open(file_path, "rb") as f:
@@ -204,17 +205,17 @@ def analyze_video_file_path(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                max_attempts = 20
+                max_attempts = 25
                 attempts = 0
                 while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(1.5)
+                    time.sleep(2)
                     attempts += 1
                     uploaded_video = client.files.get(name=uploaded_video.name)
                     if attempts >= max_attempts:
-                        raise Exception("L'elaborazione del video ha impiegato troppo tempo.")
+                        raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
 
                 if uploaded_video.state.name == "FAILED":
-                    raise Exception("Impossibile elaborare il file video con Gemini.")
+                    raise Exception("L'elaborazione del file video è fallita sui server Google.")
 
                 config = types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -269,7 +270,7 @@ def download_and_analyze_link(url):
             url
         ]
         
-        subprocess.run(cmd, check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, timeout=18, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         data = analyze_video_file_path(temp_path, video_description="")
         data["url"] = url
@@ -277,9 +278,9 @@ def download_and_analyze_link(url):
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Instagram blocca il download automatico da Cloud. Scarica il video sul telefono e caricalo nella scheda '📁 Carica File'.")
+        raise Exception("Instagram blocca il download da server Cloud. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
     except Exception as e:
-        raise Exception(f"Errore durante l'estrazione: {e}")
+        raise Exception(f"Errore durante l'estrazione dal link: {e}")
 
     finally:
         if os.path.exists(temp_path):
@@ -290,7 +291,13 @@ def download_and_analyze_link(url):
 
 def process_uploaded_video(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        tmp_file.write(uploaded_file.getbuffer())
+        # Scrittura a blocchi per evitare il timeout di buffer su file di grandi dimensioni
+        CHUNK_SIZE = 1024 * 1024
+        while True:
+            chunk = uploaded_file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            tmp_file.write(chunk)
         temp_path = tmp_file.name
 
     try:
