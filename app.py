@@ -164,83 +164,70 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI
+# 2. ENGINE IA: GOOGLE GENAI (CON INLINE BYTES PER EVITARE BLOCCHI UPLOAD)
 # =========================================================
-def analyze_video_file(file_path, video_description=""):
+def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
     MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3.6-flash"]
     last_exception = None
 
+    prompt = f"""
+    Analizza con la massima precisione questo video di cucina. 
+    1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
+    2. Ascolta la voce guida e l'audio.
+    3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
+
+    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
+
+    Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
+    {{
+        "titolo": "Nome del piatto",
+        "calorie": "450 kcal",
+        "proteine": "35g",
+        "carboidrati": "40g",
+        "grassi": "15g",
+        "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
+        "procedimento": ["passo 1", "passo 2"]
+    }}
+    """
+
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
             try:
-                client = genai.Client(api_key=current_key)
+                # Inizializza client con timeout globale per evitare blocchi infiniti
+                client = genai.Client(
+                    api_key=current_key,
+                    http_options=types.HttpOptions(timeout=25.0)
+                )
 
-                with open(file_path, "rb") as f:
-                    uploaded_video = client.files.upload(
-                        file=f,
-                        config=types.UploadFileConfig(mime_type="video/mp4")
-                    )
+                # Invio diretto dei byte inline senza upload asincrono di file estesi
+                video_part = types.Part.from_bytes(
+                    data=video_bytes,
+                    mime_type=mime_type
+                )
 
-                max_wait_attempts = 15
-                attempt_cnt = 0
-                while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(1.5)
-                    attempt_cnt += 1
-                    uploaded_video = client.files.get(name=uploaded_video.name)
-                    if attempt_cnt >= max_wait_attempts:
-                        raise Exception("Tempo limite elaborazione IA superato.")
+                config = types.GenerateContentConfig(
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                )
 
-                if uploaded_video.state.name == "FAILED":
-                    raise Exception("Impossibile elaborare il file video con Gemini.")
-
-                prompt = f"""
-                Analizza con la massima precisione questo video di cucina. 
-                1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
-                2. Ascolta la voce guida e l'audio.
-                3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
-
-                Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
-
-                Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
-                {{
-                    "titolo": "Nome del piatto",
-                    "calorie": "450 kcal",
-                    "proteine": "35g",
-                    "carboidrati": "40g",
-                    "grassi": "15g",
-                    "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
-                    "procedimento": ["passo 1", "passo 2"]
-                }}
-                """
-
-                try:
-                    config = types.GenerateContentConfig(
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-                    )
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[uploaded_video, prompt],
-                        config=config
-                    )
-                finally:
-                    try:
-                        client.files.delete(name=uploaded_video.name)
-                    except Exception:
-                        pass
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[video_part, prompt],
+                    config=config
+                )
 
                 json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
                 if json_match:
                     return json.loads(json_match.group(0))
-                raise Exception("L'IA non ha restituito un JSON valido.")
+                raise Exception("L'IA non ha restituito un formato JSON valido.")
 
             except Exception as e:
                 err_msg = str(e).lower()
                 str_e = str(e)
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e or "timeout" in err_msg
                 
                 if is_rate_limit or is_server_busy:
                     last_exception = e
@@ -249,10 +236,10 @@ def analyze_video_file(file_path, video_description=""):
                 else:
                     raise e
 
-    raise Exception(f"Servizio momentaneamente non disponibile. Dettaglio: {last_exception}")
+    raise Exception(f"Impossibile completare l'analisi. Ultimo errore: {last_exception}")
 
 # =========================================================
-# 3. DOWNLOAD VIA SUBPROCESS (ISOLAMENTO E TIMEOUT RIGIDO)
+# 3. GESTIONE INPUT (LINK & FILE UPLOAD)
 # =========================================================
 def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -269,18 +256,20 @@ def download_and_analyze_link(url):
             url
         ]
         
-        # Esegue yt-dlp come processo esterno con un timeout massimo di 15 secondi
-        subprocess.run(cmd, check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, timeout=12, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        data = analyze_video_file(temp_path, video_description="")
+        with open(temp_path, "rb") as f:
+            v_bytes = f.read()
+
+        data = analyze_video_bytes(v_bytes, mime_type="video/mp4", video_description="")
         data["url"] = url
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Instagram blocca la connessione dai server Streamlit Cloud. Usa la scheda '📁 Carica File' caricando direttamente il video .mp4.")
+        raise Exception("Instagram blocca la connessione dai server Cloud. Usa la scheda '📁 Carica File' caricando il video .mp4 salvato sul dispositivo.")
     except Exception as e:
-        raise Exception(f"Impossibile scaricare dal link inserito. Dettaglio: {e}")
+        raise Exception(f"Errore durante l'estrazione: {e}")
 
     finally:
         if os.path.exists(temp_path):
@@ -290,24 +279,19 @@ def download_and_analyze_link(url):
                 pass
 
 def process_uploaded_video(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        tmp_file.write(uploaded_file.read())
-        temp_path = tmp_file.name
-
     try:
-        data = analyze_video_file(temp_path, video_description="Video locale.")
+        file_bytes = uploaded_file.getvalue()
+        mime_type = uploaded_file.type if uploaded_file.type else "video/mp4"
+        
+        data = analyze_video_bytes(file_bytes, mime_type=mime_type, video_description="Video caricato dall'utente.")
         data["url"] = "#"
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
-    finally:
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+    except Exception as e:
+        raise Exception(f"Errore durante l'analisi del file: {e}")
 
 # =========================================================
-# 4. INTERFACCIA UTENTE
+# 4. INTERFACCIA UTENTE STREAMLIT
 # =========================================================
 st.markdown('<div class="header-title">🥐 SfizFit - Ricette & Macros</div>', unsafe_allow_html=True)
 
@@ -323,7 +307,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                     with st.spinner("✨ Estrazione ricetta in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
-                    st.error(f"Errore: {e}")
+                    st.error(f"{e}")
     with tab2:
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
         if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
@@ -331,7 +315,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                 with st.spinner("🤖 Analisi in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
             except Exception as e:
-                st.error(f"Errore: {e}")
+                st.error(f"{e}")
 
     if recipe_data:
         st.session_state.recipes.insert(0, recipe_data)
