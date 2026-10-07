@@ -4,6 +4,7 @@ import re
 import tempfile
 import time
 import base64
+import concurrent.futures
 import requests
 import streamlit as st
 from google import genai
@@ -221,7 +222,7 @@ def url_to_base64(url):
     if not url or not url.startswith("http"):
         return url
     try:
-        res = requests.get(url, timeout=6)
+        res = requests.get(url, timeout=5)
         if res.status_code == 200:
             b64 = base64.b64encode(res.content).decode("utf-8")
             return f"data:image/jpeg;base64,{b64}"
@@ -263,7 +264,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E FALLBACK MODELLI)
+# 3. ENGINE IA: GOOGLE GENAI
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
@@ -283,14 +284,14 @@ def analyze_video_file(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                max_wait_attempts = 20
+                max_wait_attempts = 15
                 attempt_cnt = 0
                 while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(2)
+                    time.sleep(1.5)
                     attempt_cnt += 1
                     uploaded_video = client.files.get(name=uploaded_video.name)
                     if attempt_cnt >= max_wait_attempts:
-                        raise Exception("Tempo limite di elaborazione video superato.")
+                        raise Exception("Tempo limite elaborazione IA superato.")
 
                 if uploaded_video.state.name == "FAILED":
                     raise Exception("Impossibile elaborare il file video con Gemini.")
@@ -329,14 +330,14 @@ def analyze_video_file(file_path, video_description=""):
                 json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
                 if json_match:
                     return json.loads(json_match.group(0))
-                raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
+                raise Exception("L'IA non ha restituito un JSON valido.")
 
             except Exception as e:
                 err_msg = str(e).lower()
                 str_e = str(e)
                 
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e or "tempo limite" in err_msg
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
                 
                 if is_rate_limit or is_server_busy:
                     last_exception = e
@@ -345,12 +346,12 @@ def analyze_video_file(file_path, video_description=""):
                 else:
                     raise e
 
-    raise Exception(f"Impossibile completare la richiesta. Ultimo errore: {last_exception}")
+    raise Exception(f"Servizio momentaneamente non disponibile. Dettaglio: {last_exception}")
 
 # =========================================================
-# 4. DOWNLOAD E CARICAMENTO VIDEO (CON TIMEOUT RIGIDO SUL DOWNLOAD)
+# 4. DOWNLOAD CON TIMEOUT HARDWARE FORZATO (MAX 12 SECONDI)
 # =========================================================
-def download_and_analyze_link(url):
+def _raw_download_and_analyze(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         temp_path = tmp_file.name
 
@@ -359,13 +360,14 @@ def download_and_analyze_link(url):
 
     try:
         ydl_opts = {
-            'format': 'best[ext=mp4]/best',
+            'format': 'b[ext=mp4]/best[ext=mp4]/best',
             'outtmpl': temp_path,
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'socket_timeout': 8,  # Interrompe se Instagram non risponde entro 8 secondi
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'socket_timeout': 5,
+            'nocheckcertificate': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -380,16 +382,21 @@ def download_and_analyze_link(url):
         data["thumbnail"] = url_to_base64(thumbnail_url)
         return data
 
-    except Exception as e:
-        raise Exception(f"Instagram ha bloccato il download automatico del link. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'. Dettagli: {e}")
-
     finally:
-        # 🧹 ELIMINA SUBITO IL VIDEO DAL SERVER STREAMLIT
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
                 pass
+
+def download_and_analyze_link(url):
+    # Esegue il download in un thread separato con stop forzato a 18 secondi
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(_raw_download_and_analyze, url)
+        try:
+            return future.result(timeout=18)
+        except concurrent.futures.TimeoutError:
+            raise Exception("Instagram ha bloccato la connessione dal server Streamlit (Timeout). Scarica il video sul telefono e caricalo dalla scheda '📁 Carica File'.")
 
 def process_uploaded_video(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -402,7 +409,6 @@ def process_uploaded_video(uploaded_file):
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
     finally:
-        # 🧹 ELIMINA SUBITO IL VIDEO CARICATO MANUALMENTE
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
@@ -479,7 +485,7 @@ with st.expander("⚙️ Backup & Ripristino"):
                 'quiet': True,
                 'no_warnings': True,
                 'skip_download': True,
-                'socket_timeout': 10,
+                'socket_timeout': 8,
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
             
