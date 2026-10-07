@@ -164,9 +164,9 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI (CON INLINE BYTES PER EVITARE BLOCCHI UPLOAD)
+# 2. ENGINE IA: GOOGLE GENAI (UPLOAD FILE CON ROBUSTEZZA ALLA RETE)
 # =========================================================
-def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""):
+def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
@@ -196,17 +196,28 @@ def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
             try:
-                # Inizializza client con timeout globale per evitare blocchi infiniti
-                client = genai.Client(
-                    api_key=current_key,
-                    http_options=types.HttpOptions(timeout=25.0)
-                )
+                # Client senza timeout aggressivi durante la fase di scrittura rete
+                client = genai.Client(api_key=current_key)
 
-                # Invio diretto dei byte inline senza upload asincrono di file estesi
-                video_part = types.Part.from_bytes(
-                    data=video_bytes,
-                    mime_type=mime_type
-                )
+                # Caricamento via File API per gestire file video senza blocchi di write-timeout
+                with open(file_path, "rb") as f:
+                    uploaded_video = client.files.upload(
+                        file=f,
+                        config=types.UploadFileConfig(mime_type="video/mp4")
+                    )
+
+                # Attesa elaborazione file
+                max_attempts = 20
+                attempts = 0
+                while uploaded_video.state.name == "PROCESSING":
+                    time.sleep(1.5)
+                    attempts += 1
+                    uploaded_video = client.files.get(name=uploaded_video.name)
+                    if attempts >= max_attempts:
+                        raise Exception("L'elaborazione del video ha impiegato troppo tempo.")
+
+                if uploaded_video.state.name == "FAILED":
+                    raise Exception("Impossibile elaborare il file video con Gemini.")
 
                 config = types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
@@ -214,9 +225,15 @@ def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""
 
                 response = client.models.generate_content(
                     model=model_name,
-                    contents=[video_part, prompt],
+                    contents=[uploaded_video, prompt],
                     config=config
                 )
+
+                # Pulizia immediata del file remoto
+                try:
+                    client.files.delete(name=uploaded_video.name)
+                except Exception:
+                    pass
 
                 json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
                 if json_match:
@@ -227,7 +244,7 @@ def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""
                 err_msg = str(e).lower()
                 str_e = str(e)
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e or "timeout" in err_msg
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
                 
                 if is_rate_limit or is_server_busy:
                     last_exception = e
@@ -236,10 +253,10 @@ def analyze_video_bytes(video_bytes, mime_type="video/mp4", video_description=""
                 else:
                     raise e
 
-    raise Exception(f"Impossibile completare l'analisi. Ultimo errore: {last_exception}")
+    raise Exception(f"Impossibile completare l'analisi. Dettaglio: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT (LINK & FILE UPLOAD)
+# 3. GESTIONE INPUT
 # =========================================================
 def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -250,24 +267,21 @@ def download_and_analyze_link(url):
             "yt-dlp",
             "--format", "b[ext=mp4]/best[ext=mp4]/best",
             "--output", temp_path,
-            "--socket-timeout", "5",
+            "--socket-timeout", "6",
             "--no-check-certificate",
             "--force-overwrites",
             url
         ]
         
-        subprocess.run(cmd, check=True, timeout=12, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        with open(temp_path, "rb") as f:
-            v_bytes = f.read()
-
-        data = analyze_video_bytes(v_bytes, mime_type="video/mp4", video_description="")
+        data = analyze_video_file_path(temp_path, video_description="")
         data["url"] = url
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Instagram blocca la connessione dai server Cloud. Usa la scheda '📁 Carica File' caricando il video .mp4 salvato sul dispositivo.")
+        raise Exception("Instagram blocca il download automatico da Cloud. Scarica il video sul telefono e caricalo nella scheda '📁 Carica File'.")
     except Exception as e:
         raise Exception(f"Errore durante l'estrazione: {e}")
 
@@ -279,16 +293,21 @@ def download_and_analyze_link(url):
                 pass
 
 def process_uploaded_video(uploaded_file):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+        tmp_file.write(uploaded_file.getbuffer())
+        temp_path = tmp_file.name
+
     try:
-        file_bytes = uploaded_file.getvalue()
-        mime_type = uploaded_file.type if uploaded_file.type else "video/mp4"
-        
-        data = analyze_video_bytes(file_bytes, mime_type=mime_type, video_description="Video caricato dall'utente.")
+        data = analyze_video_file_path(temp_path, video_description="Video caricato dall'utente.")
         data["url"] = "#"
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
-    except Exception as e:
-        raise Exception(f"Errore durante l'analisi del file: {e}")
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 # =========================================================
 # 4. INTERFACCIA UTENTE STREAMLIT
@@ -349,65 +368,4 @@ filtered_recipes = [
 ]
 
 if not filtered_recipes:
-    st.info("Nessuna ricetta presente.")
-else:
-    default_img = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
-
-    for idx, item in enumerate(filtered_recipes):
-        titolo = item.get('titolo', 'Ricetta')
-        cal = item.get('calorie', 'N/D')
-        prot = item.get('proteine', 'N/D')
-        carb = item.get('carboidrati', 'N/D')
-        fat = item.get('grassi', 'N/D')
-        img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
-        video_url = item.get("url")
-
-        st.markdown(f"""
-        <div class="recipe-card">
-            <div class="card-title-top">{titolo}</div>
-            <img src="{img_src}" class="card-img-full" />
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.expander("📖 Dettagli"):
-            st.markdown(f"""
-            <div class="macro-container">
-                <div class="macro-box">
-                    <span class="macro-label">Calorie</span>
-                    <span class="macro-pill pill-cal">{cal}</span>
-                </div>
-                <div class="macro-box">
-                    <span class="macro-label">Proteine</span>
-                    <span class="macro-pill pill-prot">{prot}</span>
-                </div>
-                <div class="macro-box">
-                    <span class="macro-label">Carboidrati</span>
-                    <span class="macro-pill pill-carb">{carb}</span>
-                </div>
-                <div class="macro-box">
-                    <span class="macro-label">Grassi</span>
-                    <span class="macro-pill pill-fat">{fat}</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("**🛒 Ingredienti:**")
-            for ing in item.get("ingredienti", []):
-                st.write(f"- {ing}")
-            
-            st.markdown("**👨‍🍳 Procedimento:**")
-            for p_idx, step in enumerate(item.get("procedimento", []), 1):
-                st.write(f"{p_idx}. {step}")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            if video_url and video_url != "#":
-                st.link_button("🎥 Guarda Video Originale", video_url, use_container_width=True)
-
-            recipe_txt = format_recipe_text(item)
-            st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}", use_container_width=True)
-            
-            if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}", use_container_width=True):
-                st.session_state.recipes.pop(idx)
-                save_recipes(st.session_state.recipes)
-                st.rerun()
+    st.info("Nessuna ricetta presente
