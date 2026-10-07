@@ -263,83 +263,85 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E RETRY 503)
+# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E FALLBACK MODELLI SUPPORTATI)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
+    # Modelli ufficiali supportati dalla libreria google-genai
+    MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.0-flash"]
     last_exception = None
 
-    for current_key in API_KEYS:
-        try:
-            client = genai.Client(api_key=current_key)
-
-            with open(file_path, "rb") as f:
-                uploaded_video = client.files.upload(
-                    file=f,
-                    config=types.UploadFileConfig(mime_type="video/mp4")
-                )
-
-            while uploaded_video.state.name == "PROCESSING":
-                time.sleep(2)
-                uploaded_video = client.files.get(name=uploaded_video.name)
-
-            if uploaded_video.state.name == "FAILED":
-                raise Exception("Impossibile elaborare il file video con Gemini.")
-
-            prompt = f"""
-            Analizza con la massima precisione questo video di cucina. 
-            1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
-            2. Ascolta la voce guida e l'audio.
-            3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
-
-            Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
-
-            Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
-            {{
-                "titolo": "Nome del piatto",
-                "calorie": "450 kcal",
-                "proteine": "35g",
-                "carboidrati": "40g",
-                "grassi": "15g",
-                "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
-                "procedimento": ["passo 1", "passo 2"]
-            }}
-            """
-
+    for model_name in MODELS_TO_TRY:
+        for current_key in API_KEYS:
             try:
-                response = client.models.generate_content(
-                    model='gemini-3.6-flash',
-                    contents=[uploaded_video, prompt]
-                )
-            finally:
+                client = genai.Client(api_key=current_key)
+
+                with open(file_path, "rb") as f:
+                    uploaded_video = client.files.upload(
+                        file=f,
+                        config=types.UploadFileConfig(mime_type="video/mp4")
+                    )
+
+                while uploaded_video.state.name == "PROCESSING":
+                    time.sleep(2)
+                    uploaded_video = client.files.get(name=uploaded_video.name)
+
+                if uploaded_video.state.name == "FAILED":
+                    raise Exception("Impossibile elaborare il file video con Gemini.")
+
+                prompt = f"""
+                Analizza con la massima precisione questo video di cucina. 
+                1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
+                2. Ascolta la voce guida e l'audio.
+                3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
+
+                Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
+
+                Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
+                {{
+                    "titolo": "Nome del piatto",
+                    "calorie": "450 kcal",
+                    "proteine": "35g",
+                    "carboidrati": "40g",
+                    "grassi": "15g",
+                    "ingredienti": ["ingrediente 1 con dose", "ingrediente 2 con dose"],
+                    "procedimento": ["passo 1", "passo 2"]
+                }}
+                """
+
                 try:
-                    client.files.delete(name=uploaded_video.name)
-                except Exception:
-                    pass
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[uploaded_video, prompt]
+                    )
+                finally:
+                    try:
+                        client.files.delete(name=uploaded_video.name)
+                    except Exception:
+                        pass
 
-            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group(0))
-            raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
+                json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(0))
+                raise Exception("L'IA non ha restituito una risposta in formato JSON valido.")
 
-        except Exception as e:
-            err_msg = str(e).lower()
-            str_e = str(e)
-            
-            # Intercetta sia i limiti di quota (429) sia i server intasati (503 / UNAVAILABLE / High Demand)
-            is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-            is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg
-            
-            if is_rate_limit or is_server_busy:
-                last_exception = e
-                time.sleep(2)  # Pausa di 2 secondi prima di passare alla chiave successiva o riprovare
-                continue
-            else:
-                raise e
+            except Exception as e:
+                err_msg = str(e).lower()
+                str_e = str(e)
+                
+                is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg
+                
+                if is_rate_limit or is_server_busy:
+                    last_exception = e
+                    time.sleep(1)
+                    continue
+                else:
+                    raise e
 
-    raise Exception(f"Nessuna API Key ha potuto completare la richiesta (Limiti raggiunti o server intasati). Ultimo errore: {last_exception}")
+    raise Exception(f"Tutti i modelli e le API Key sono momentaneamente occupati. Ultimo errore: {last_exception}")
 
 # =========================================================
 # 4. DOWNLOAD E CARICAMENTO VIDEO
