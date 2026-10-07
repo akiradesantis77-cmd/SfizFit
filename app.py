@@ -153,6 +153,18 @@ def format_recipe_text(item):
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
+def url_to_base64(url):
+    if not url or not url.startswith("http"):
+        return url
+    try:
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            b64 = base64.b64encode(res.content).decode("utf-8")
+            return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        pass
+    return url
+
 def extract_thumbnail_from_video(video_path):
     thumb_path = video_path + ".jpg"
     default_fallback = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
@@ -173,7 +185,7 @@ def extract_thumbnail_from_video(video_path):
             os.remove(thumb_path)
         except Exception:
             pass
-    return default_fallback
+    return url_to_base64(default_fallback)
 
 # =========================================================
 # 2. ENGINE IA: GEMINI-3.5-FLASH-LITE CON PRIORITÀ AL TESTO
@@ -246,7 +258,7 @@ def analyze_video_bytes(video_bytes, video_description=""):
     raise Exception(f"Errore durante l'analisi IA: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT & METADATI SOCIAL
+# 3. GESTIONE INPUT & METADATI SOCIAL (CON BASE64 PERMANENTE)
 # =========================================================
 def download_and_analyze_link(url):
     temp_dir = tempfile.mkdtemp()
@@ -287,11 +299,13 @@ def download_and_analyze_link(url):
             v_bytes = f.read()
 
         if thumb_url == "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80":
-            thumb_url = extract_thumbnail_from_video(out_file)
+            final_thumb = extract_thumbnail_from_video(out_file)
+        else:
+            final_thumb = url_to_base64(thumb_url)
 
         data = analyze_video_bytes(v_bytes, video_description=video_description)
         data["url"] = url
-        data["thumbnail"] = thumb_url
+        data["thumbnail"] = final_thumb
         return data
 
     except Exception as e:
@@ -327,11 +341,11 @@ def process_uploaded_video(uploaded_file):
         with open(temp_path, "rb") as f:
             v_bytes = f.read()
 
-        thumb_url = extract_thumbnail_from_video(temp_path)
+        final_thumb = extract_thumbnail_from_video(temp_path)
 
         data = analyze_video_bytes(v_bytes, video_description="Video caricato direttamente dall'utente.")
         data["url"] = "#"
-        data["thumbnail"] = thumb_url
+        data["thumbnail"] = final_thumb
         return data
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -413,7 +427,7 @@ else:
         prot = item.get('proteine', 'N/D')
         carb = item.get('carboidrati', 'N/D')
         fat = item.get('grassi', 'N/D')
-        img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
+        img_src = item.get('thumbnail') if item.get('thumbnail') else url_to_base64(default_img)
         video_url = item.get("url")
 
         st.markdown(f"""
