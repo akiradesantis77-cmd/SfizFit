@@ -107,13 +107,15 @@ div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# Gestione API Keys nei Secrets (Supporto sia per stringa singola che lista TOML)
-api_keys_raw = st.secrets.get("GEMINI_API_KEYS", st.secrets.get("GEMINI_API_KEY", []))
-if isinstance(api_keys_raw, str):
-    API_KEYS = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
-elif isinstance(api_keys_raw, list):
-    API_KEYS = [str(k).strip() for k in api_keys_raw if str(k).strip()]
-else:
+# Gestione API Keys nei Secrets
+API_KEYS = []
+try:
+    api_keys_raw = st.secrets.get("GEMINI_API_KEYS", st.secrets.get("GEMINI_API_KEY", []))
+    if isinstance(api_keys_raw, str):
+        API_KEYS = [k.strip() for k in api_keys_raw.split(",") if k.strip()]
+    elif isinstance(api_keys_raw, list):
+        API_KEYS = [str(k).strip() for k in api_keys_raw if str(k).strip()]
+except Exception:
     API_KEYS = []
 
 DATA_FILE = "recipes.json"
@@ -170,7 +172,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3.6-flash"]
+    # Nomi di modelli ufficiali e validi
+    MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-1.5-flash"]
     last_exception = None
 
     prompt = f"""
@@ -196,7 +199,6 @@ def analyze_video_file_path(file_path, video_description=""):
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
             try:
-                # Inizializza il client consentendo tutti i tipi di token AI Studio
                 client = genai.Client(api_key=current_key)
 
                 with open(file_path, "rb") as f:
@@ -218,6 +220,7 @@ def analyze_video_file_path(file_path, video_description=""):
                     raise Exception("L'elaborazione del file video è fallita sui server Google.")
 
                 config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
                 )
 
@@ -232,9 +235,11 @@ def analyze_video_file_path(file_path, video_description=""):
                 except Exception:
                     pass
 
-                json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group(0))
+                if response.text:
+                    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                    if json_match:
+                        return json.loads(json_match.group(0))
+                
                 raise Exception("L'IA non ha restituito un formato JSON valido.")
 
             except Exception as e:
@@ -291,7 +296,6 @@ def download_and_analyze_link(url):
 
 def process_uploaded_video(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        # Scrittura a blocchi per evitare il timeout di buffer su file di grandi dimensioni
         CHUNK_SIZE = 1024 * 1024
         while True:
             chunk = uploaded_file.read(CHUNK_SIZE)
@@ -430,6 +434,7 @@ else:
             st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}", use_container_width=True)
             
             if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}", use_container_width=True):
-                st.session_state.recipes.pop(idx)
-                save_recipes(st.session_state.recipes)
-                st.rerun()
+                if item in st.session_state.recipes:
+                    st.session_state.recipes.remove(item)
+                    save_recipes(st.session_state.recipes)
+                    st.rerun()
