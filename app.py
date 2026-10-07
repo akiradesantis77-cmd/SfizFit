@@ -172,8 +172,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    # Modelli attuali e compatibili con l'SDK google-genai
-    MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.0-flash"]
+    # Modello aggiornato secondo le direttive Google API
+    MODELS_TO_TRY = ["gemini-3.8-flash"]
     last_exception = None
 
     prompt = f"""
@@ -245,8 +245,9 @@ def analyze_video_file_path(file_path, video_description=""):
             except Exception as e:
                 err_msg = str(e).lower()
                 str_e = str(e)
+                
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg
                 
                 if is_rate_limit or is_server_busy:
                     last_exception = e
