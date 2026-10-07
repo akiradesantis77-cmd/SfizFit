@@ -172,8 +172,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    # Modello aggiornato secondo le direttive Google API
-    MODELS_TO_TRY = ["gemini-3.8-flash"]
+    # Modello primario con fallback a 2.5-flash
+    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
     last_exception = None
 
     prompt = f"""
@@ -254,7 +254,8 @@ def analyze_video_file_path(file_path, video_description=""):
                     time.sleep(1)
                     continue
                 else:
-                    raise e
+                    last_exception = e
+                    break
 
     raise Exception(f"Impossibile completare l'analisi. Dettaglio: {last_exception}")
 
@@ -266,17 +267,27 @@ def download_and_analyze_link(url):
         temp_path = tmp_file.name
 
     try:
+        # Comando ottimizzato per evitare download di video troppo pesanti
         cmd = [
             "yt-dlp",
-            "--format", "b[ext=mp4]/best[ext=mp4]/best",
+            "--format", "worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/w",
             "--output", temp_path,
-            "--socket-timeout", "6",
+            "--socket-timeout", "15",
             "--no-check-certificate",
             "--force-overwrites",
             url
         ]
         
-        subprocess.run(cmd, check=True, timeout=18, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        result = subprocess.run(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True, 
+            timeout=45
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"Errore download video: {result.stderr[:200]}")
 
         data = analyze_video_file_path(temp_path, video_description="")
         data["url"] = url
@@ -284,9 +295,9 @@ def download_and_analyze_link(url):
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Instagram blocca il download da server Cloud. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
+        raise Exception("Instagram/TikTok hanno bloccato la richiesta cloud (Timeout). Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
     except Exception as e:
-        raise Exception(f"Errore durante l'estrazione dal link: {e}")
+        raise Exception(f"{e}")
 
     finally:
         if os.path.exists(temp_path):
@@ -324,31 +335,35 @@ st.markdown('<div class="header-title">🥐 SfizFit - Ricette & Macros</div>', u
 
 with st.expander("➕ Aggiungi Nuova Ricetta"):
     tab1, tab2 = st.tabs(["🔗 Link Social", "📁 Carica File"])
-    recipe_data = None
     
     with tab1:
         video_url = st.text_input("Link Reel / TikTok:", placeholder="https://www.instagram.com/reel/...")
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Estrazione ricetta in corso..."):
+                    with st.spinner("✨ Estrazione e analisi in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
+                        st.session_state.recipes.insert(0, recipe_data)
+                        save_recipes(st.session_state.recipes)
+                        st.success("✅ Ricetta salvata!")
+                        st.rerun()
                 except Exception as e:
                     st.error(f"{e}")
+            else:
+                st.warning("Inserisci prima un link valido.")
+
     with tab2:
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
         if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
             try:
                 with st.spinner("🤖 Analisi in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
+                    st.session_state.recipes.insert(0, recipe_data)
+                    save_recipes(st.session_state.recipes)
+                    st.success("✅ Ricetta salvata!")
+                    st.rerun()
             except Exception as e:
                 st.error(f"{e}")
-
-    if recipe_data:
-        st.session_state.recipes.insert(0, recipe_data)
-        save_recipes(st.session_state.recipes)
-        st.success("✅ Ricetta salvata!")
-        st.rerun()
 
 search_query = st.text_input("Cerca ricetta", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
