@@ -120,18 +120,6 @@ except Exception:
 
 DATA_FILE = "recipes.json"
 
-def url_to_base64(url):
-    if not url or not url.startswith("http"):
-        return url
-    try:
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            b64 = base64.b64encode(res.content).decode("utf-8")
-            return f"data:image/jpeg;base64,{b64}"
-    except Exception:
-        pass
-    return url
-
 def load_recipes():
     if os.path.exists(DATA_FILE):
         try:
@@ -173,7 +161,7 @@ def analyze_video_file_path(file_path, video_description=""):
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-        raise Exception("Impossibile scaricare il video. Il social network blocca il download cloud.")
+        raise Exception("Il file video non esiste o è vuoto.")
 
     MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
     last_exception = None
@@ -209,10 +197,10 @@ def analyze_video_file_path(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                max_attempts = 25
+                max_attempts = 20
                 attempts = 0
                 while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(2)
+                    time.sleep(1.5)
                     attempts += 1
                     uploaded_video = client.files.get(name=uploaded_video.name)
                     if attempts >= max_attempts:
@@ -245,19 +233,8 @@ def analyze_video_file_path(file_path, video_description=""):
                 raise Exception("L'IA non ha restituito un formato JSON valido.")
 
             except Exception as e:
-                err_msg = str(e).lower()
-                str_e = str(e)
-                
-                is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg
-                
-                if is_rate_limit or is_server_busy:
-                    last_exception = e
-                    time.sleep(1)
-                    continue
-                else:
-                    last_exception = e
-                    break
+                last_exception = e
+                break
 
     raise Exception(f"Impossibile completare l'analisi. Dettaglio: {last_exception}")
 
@@ -265,30 +242,32 @@ def analyze_video_file_path(file_path, video_description=""):
 # 3. GESTIONE INPUT
 # =========================================================
 def download_and_analyze_link(url):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        temp_path = tmp_file.name
-
+    temp_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+            temp_path = tmp_file.name
+
         cmd = [
             "yt-dlp",
             "--format", "b[ext=mp4]/best[ext=mp4]/best",
             "--output", temp_path,
-            "--socket-timeout", "10",
+            "--socket-timeout", "8",
             "--no-check-certificate",
             "--force-overwrites",
             url
         ]
         
+        # Timeout massimo di 15 secondi per evitare che lo spinner continui all'infinito
         result = subprocess.run(
             cmd, 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE, 
             text=True, 
-            timeout=30
+            timeout=15
         )
 
         if result.returncode != 0 or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
-            raise Exception("Instagram/TikTok bloccano il download da server Cloud. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
+            raise Exception("Instagram/TikTok bloccano i server Cloud. Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
 
         data = analyze_video_file_path(temp_path, video_description="")
         data["url"] = url
@@ -296,34 +275,35 @@ def download_and_analyze_link(url):
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Tempo d'attesa scaduto. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
+        raise Exception("Download bloccato dal server del social. Scarica il video e usa la scheda '📁 Carica File'.")
     except Exception as e:
         raise Exception(f"{e}")
 
     finally:
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
                 pass
 
 def process_uploaded_video(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        CHUNK_SIZE = 1024 * 1024
-        while True:
-            chunk = uploaded_file.read(CHUNK_SIZE)
-            if not chunk:
-                break
-            tmp_file.write(chunk)
-        temp_path = tmp_file.name
-
+    temp_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+            CHUNK_SIZE = 1024 * 1024
+            while True:
+                chunk = uploaded_file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                tmp_file.write(chunk)
+            temp_path = tmp_file.name
+
         data = analyze_video_file_path(temp_path, video_description="Video caricato dall'utente.")
         data["url"] = "#"
         data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
     finally:
-        if os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
@@ -342,7 +322,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Estrazione e analisi in corso..."):
+                    with st.spinner("✨ Estrazione in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
                         st.session_state.recipes.insert(0, recipe_data)
                         save_recipes(st.session_state.recipes)
@@ -357,7 +337,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
         if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
             try:
-                with st.spinner("🤖 Analisi in corso..."):
+                with st.spinner("🤖 Analisi video in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
                     st.session_state.recipes.insert(0, recipe_data)
                     save_recipes(st.session_state.recipes)
