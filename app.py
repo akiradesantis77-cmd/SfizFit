@@ -153,8 +153,31 @@ def format_recipe_text(item):
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
+# Funzione per estrarre un fotogramma di anteprima da un file video locale
+def extract_thumbnail_from_video(video_path):
+    thumb_path = video_path + ".jpg"
+    default_fallback = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
+    try:
+        import subprocess
+        cmd = ["ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01", "-vframes", "1", thumb_path]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            with open(thumb_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            os.remove(thumb_path)
+            return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        pass
+    
+    if os.path.exists(thumb_path):
+        try:
+            os.remove(thumb_path)
+        except Exception:
+            pass
+    return default_fallback
+
 # =========================================================
-# 2. ENGINE IA: GEMINI-3.5-FLASH-LITE (INVIO DIRETTISSIMO BYTE)
+# 2. ENGINE IA: GEMINI-3.5-FLASH-LITE
 # =========================================================
 def analyze_video_bytes(video_bytes, video_description=""):
     if not API_KEYS:
@@ -190,7 +213,6 @@ def analyze_video_bytes(video_bytes, video_description=""):
         try:
             client = genai.Client(api_key=current_key)
 
-            # Inseriamo i byte del video direttamente nella chiamata, senza passare per la File API
             video_part = types.Part.from_bytes(
                 data=video_bytes,
                 mime_type="video/mp4"
@@ -222,13 +244,23 @@ def analyze_video_bytes(video_bytes, video_description=""):
     raise Exception(f"Errore durante l'analisi IA: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT
+# 3. GESTIONE INPUT & THUMBNAILS
 # =========================================================
 def download_and_analyze_link(url):
     temp_dir = tempfile.mkdtemp()
     out_file = os.path.join(temp_dir, "video.mp4")
+    thumb_url = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
 
-    ydl_opts = {
+    ydl_opts_info = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and info.get('thumbnail'):
+                thumb_url = info.get('thumbnail')
+    except Exception:
+        pass
+
+    ydl_opts_dl = {
         'format': 'b[ext=mp4]/best[ext=mp4]/best',
         'outtmpl': out_file,
         'quiet': True,
@@ -238,7 +270,7 @@ def download_and_analyze_link(url):
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts_dl) as ydl:
             ydl.download([url])
 
         if not os.path.exists(out_file) or os.path.getsize(out_file) == 0:
@@ -247,9 +279,13 @@ def download_and_analyze_link(url):
         with open(out_file, "rb") as f:
             v_bytes = f.read()
 
+        # Se l'anteprima non è stata trovata da yt-dlp, proviamo a estrarre un fotogramma dal video scaricato
+        if thumb_url == "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80":
+            thumb_url = extract_thumbnail_from_video(out_file)
+
         data = analyze_video_bytes(v_bytes, video_description="")
         data["url"] = url
-        data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
+        data["thumbnail"] = thumb_url
         return data
 
     except Exception as e:
@@ -271,11 +307,33 @@ def download_and_analyze_link(url):
                 pass
 
 def process_uploaded_video(uploaded_file):
-    v_bytes = uploaded_file.read()
-    data = analyze_video_bytes(v_bytes, video_description="Video caricato dall'utente.")
-    data["url"] = "#"
-    data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
-    return data
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+            CHUNK_SIZE = 1024 * 1024
+            while True:
+                chunk = uploaded_file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                tmp_file.write(chunk)
+            temp_path = tmp_file.name
+
+        with open(temp_path, "rb") as f:
+            v_bytes = f.read()
+
+        # Estrae il fotogramma di anteprima dal video caricato dall'utente
+        thumb_url = extract_thumbnail_from_video(temp_path)
+
+        data = analyze_video_bytes(v_bytes, video_description="Video caricato dall'utente.")
+        data["url"] = "#"
+        data["thumbnail"] = thumb_url
+        return data
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 # =========================================================
 # 4. INTERFACCIA UTENTE STREAMLIT
