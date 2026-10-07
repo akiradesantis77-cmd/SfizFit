@@ -153,7 +153,6 @@ def format_recipe_text(item):
 if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
-# Funzione per estrarre un fotogramma di anteprima da un file video locale
 def extract_thumbnail_from_video(video_path):
     thumb_path = video_path + ".jpg"
     default_fallback = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
@@ -177,7 +176,7 @@ def extract_thumbnail_from_video(video_path):
     return default_fallback
 
 # =========================================================
-# 2. ENGINE IA: GEMINI-3.5-FLASH-LITE
+# 2. ENGINE IA: GEMINI-3.5-FLASH-LITE CON PRIORITÀ AL TESTO
 # =========================================================
 def analyze_video_bytes(video_bytes, video_description=""):
     if not API_KEYS:
@@ -190,12 +189,15 @@ def analyze_video_bytes(video_bytes, video_description=""):
     last_exception = None
 
     prompt = f"""
-    Analizza con la massima precisione questo video di cucina. 
-    1. Leggi attentamente tutte le scritte, i testi e le didascalie che compaiono a schermo nel video.
-    2. Ascolta la voce guida e l'audio.
-    3. Considera la descrizione testuale ufficiale del post (se disponibile): "{video_description}".
+    Analizza con la massima precisione questo video di cucina e la relativa descrizione testuale ufficiale del post.
+    IMPORTANTE: La descrizione testuale ufficiale del post ha la MASSIMA PRIORITÀ per i nomi, gli ingredienti esatti, le dosi, i passaggi e i dettagli precisi (es. temperature di cottura come 180°C, tempi, grammature). Se un'informazione è scritta nella descrizione, usala rigorosamente e non ometterla. Usa il video per completare o verificare ciò che non è esplicitamente scritto nel testo.
 
-    Estrai il titolo del piatto, tutti gli ingredienti con le rispettive dosi esatte, il procedimento passo-passo e stima i macronutrienti totali.
+    Descrizione ufficiale del post:
+    \"\"\"
+    {video_description}
+    \"\"\"
+
+    Estrai il titolo esatto del piatto, tutti gli ingredienti con le rispettive dosi, il procedimento dettagliato passo-passo (mantenendo indicazioni come temperature del forno, tempi e modalità se presenti) e stima i macronutrienti totali.
 
     Rispondi ESCLUSIVAMENTE con un oggetto JSON valido organizzato esattamente così:
     {{
@@ -244,19 +246,24 @@ def analyze_video_bytes(video_bytes, video_description=""):
     raise Exception(f"Errore durante l'analisi IA: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT & THUMBNAILS
+# 3. GESTIONE INPUT & METADATI SOCIAL
 # =========================================================
 def download_and_analyze_link(url):
     temp_dir = tempfile.mkdtemp()
     out_file = os.path.join(temp_dir, "video.mp4")
     thumb_url = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
+    video_description = ""
 
     ydl_opts_info = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
     try:
         with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
             info = ydl.extract_info(url, download=False)
-            if info and info.get('thumbnail'):
-                thumb_url = info.get('thumbnail')
+            if info:
+                if info.get('thumbnail'):
+                    thumb_url = info.get('thumbnail')
+                title_meta = info.get('title', '')
+                desc_meta = info.get('description', '')
+                video_description = f"Titolo: {title_meta}\nDescrizione: {desc_meta}"
     except Exception:
         pass
 
@@ -279,11 +286,10 @@ def download_and_analyze_link(url):
         with open(out_file, "rb") as f:
             v_bytes = f.read()
 
-        # Se l'anteprima non è stata trovata da yt-dlp, proviamo a estrarre un fotogramma dal video scaricato
         if thumb_url == "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80":
             thumb_url = extract_thumbnail_from_video(out_file)
 
-        data = analyze_video_bytes(v_bytes, video_description="")
+        data = analyze_video_bytes(v_bytes, video_description=video_description)
         data["url"] = url
         data["thumbnail"] = thumb_url
         return data
@@ -321,10 +327,9 @@ def process_uploaded_video(uploaded_file):
         with open(temp_path, "rb") as f:
             v_bytes = f.read()
 
-        # Estrae il fotogramma di anteprima dal video caricato dall'utente
         thumb_url = extract_thumbnail_from_video(temp_path)
 
-        data = analyze_video_bytes(v_bytes, video_description="Video caricato dall'utente.")
+        data = analyze_video_bytes(v_bytes, video_description="Video caricato direttamente dall'utente.")
         data["url"] = "#"
         data["thumbnail"] = thumb_url
         return data
@@ -348,7 +353,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Solo un momento meraviglia..."):
+                    with st.spinner("✨ Download e analisi in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
                         st.session_state.recipes.insert(0, recipe_data)
                         save_recipes(st.session_state.recipes)
