@@ -353,7 +353,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Download e analisi in corso..."):
+                    with st.spinner("✨ Solo un momento meraviglia..."):
                         recipe_data = download_and_analyze_link(video_url)
                         st.session_state.recipes.insert(0, recipe_data)
                         save_recipes(st.session_state.recipes)
