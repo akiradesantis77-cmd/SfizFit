@@ -164,7 +164,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI (UPLOAD FILE CON ROBUSTEZZA ALLA RETE)
+# 2. ENGINE IA: GOOGLE GENAI
 # =========================================================
 def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
@@ -196,17 +196,14 @@ def analyze_video_file_path(file_path, video_description=""):
     for model_name in MODELS_TO_TRY:
         for current_key in API_KEYS:
             try:
-                # Client senza timeout aggressivi durante la fase di scrittura rete
                 client = genai.Client(api_key=current_key)
 
-                # Caricamento via File API per gestire file video senza blocchi di write-timeout
                 with open(file_path, "rb") as f:
                     uploaded_video = client.files.upload(
                         file=f,
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
-                # Attesa elaborazione file
                 max_attempts = 20
                 attempts = 0
                 while uploaded_video.state.name == "PROCESSING":
@@ -229,7 +226,6 @@ def analyze_video_file_path(file_path, video_description=""):
                     config=config
                 )
 
-                # Pulizia immediata del file remoto
                 try:
                     client.files.delete(name=uploaded_video.name)
                 except Exception:
@@ -368,4 +364,65 @@ filtered_recipes = [
 ]
 
 if not filtered_recipes:
-    st.info("Nessuna ricetta presente
+    st.info("Nessuna ricetta presente.")
+else:
+    default_img = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
+
+    for idx, item in enumerate(filtered_recipes):
+        titolo = item.get('titolo', 'Ricetta')
+        cal = item.get('calorie', 'N/D')
+        prot = item.get('proteine', 'N/D')
+        carb = item.get('carboidrati', 'N/D')
+        fat = item.get('grassi', 'N/D')
+        img_src = item.get('thumbnail') if item.get('thumbnail') else default_img
+        video_url = item.get("url")
+
+        st.markdown(f"""
+        <div class="recipe-card">
+            <div class="card-title-top">{titolo}</div>
+            <img src="{img_src}" class="card-img-full" />
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("📖 Dettagli"):
+            st.markdown(f"""
+            <div class="macro-container">
+                <div class="macro-box">
+                    <span class="macro-label">Calorie</span>
+                    <span class="macro-pill pill-cal">{cal}</span>
+                </div>
+                <div class="macro-box">
+                    <span class="macro-label">Proteine</span>
+                    <span class="macro-pill pill-prot">{prot}</span>
+                </div>
+                <div class="macro-box">
+                    <span class="macro-label">Carboidrati</span>
+                    <span class="macro-pill pill-carb">{carb}</span>
+                </div>
+                <div class="macro-box">
+                    <span class="macro-label">Grassi</span>
+                    <span class="macro-pill pill-fat">{fat}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("**🛒 Ingredienti:**")
+            for ing in item.get("ingredienti", []):
+                st.write(f"- {ing}")
+            
+            st.markdown("**👨‍🍳 Procedimento:**")
+            for p_idx, step in enumerate(item.get("procedimento", []), 1):
+                st.write(f"{p_idx}. {step}")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if video_url and video_url != "#":
+                st.link_button("🎥 Guarda Video Originale", video_url, use_container_width=True)
+
+            recipe_txt = format_recipe_text(item)
+            st.download_button("📄 Scarica Ricetta", recipe_txt, file_name=f"{titolo.lower().replace(' ', '_')}.txt", key=f"dl_{idx}", use_container_width=True)
+            
+            if st.button("🗑️ Elimina Ricetta", key=f"del_{idx}", use_container_width=True):
+                st.session_state.recipes.pop(idx)
+                save_recipes(st.session_state.recipes)
+                st.rerun()
