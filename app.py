@@ -154,7 +154,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 2. ENGINE IA: GOOGLE GENAI
+# 2. ENGINE IA: GOOGLE GENAI (CON POLLING SICURO)
 # =========================================================
 def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
@@ -163,7 +163,6 @@ def analyze_video_file_path(file_path, video_description=""):
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         raise Exception("Il file video temporaneo è vuoto o non esiste.")
 
-    # Unico modello attivo ufficiale Google
     MODEL_NAME = "gemini-3.8-flash"
     last_exception = None
 
@@ -188,65 +187,62 @@ def analyze_video_file_path(file_path, video_description=""):
     """
 
     for current_key in API_KEYS:
-        for retry_count in range(2):
-            try:
-                client = genai.Client(api_key=current_key)
+        try:
+            client = genai.Client(api_key=current_key)
 
-                with open(file_path, "rb") as f:
-                    uploaded_video = client.files.upload(
-                        file=f,
-                        config=types.UploadFileConfig(mime_type="video/mp4")
-                    )
+            uploaded_video = client.files.upload(
+                file=file_path,
+                config=types.UploadFileConfig(mime_type="video/mp4")
+            )
 
-                max_attempts = 20
-                attempts = 0
-                while uploaded_video.state.name == "PROCESSING":
-                    time.sleep(1.5)
-                    attempts += 1
-                    uploaded_video = client.files.get(name=uploaded_video.name)
-                    if attempts >= max_attempts:
-                        raise Exception("Tempo d'attesa per l'elaborazione del video superato.")
-
-                if uploaded_video.state.name == "FAILED":
-                    raise Exception("L'elaborazione del file video è fallita sui server Google.")
-
-                config = types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-                )
-
-                response = client.models.generate_content(
-                    model=MODEL_NAME,
-                    contents=[uploaded_video, prompt],
-                    config=config
-                )
-
+            # Polling con limite di 15 tentativi (max 30 secondi)
+            max_attempts = 15
+            attempts = 0
+            while attempts < max_attempts:
+                time.sleep(2)
+                attempts += 1
                 try:
-                    client.files.delete(name=uploaded_video.name)
+                    uploaded_video = client.files.get(name=uploaded_video.name)
+                    state = getattr(uploaded_video.state, "name", str(uploaded_video.state))
+                    if state == "ACTIVE":
+                        break
+                    elif state == "FAILED":
+                        raise Exception("L'elaborazione del video è fallita sui server Google.")
                 except Exception:
                     pass
 
-                if response.text:
-                    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
-                    if json_match:
-                        return json.loads(json_match.group(0))
-                
-                raise Exception("L'IA non ha restituito un formato JSON valido.")
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+            )
 
-            except Exception as e:
-                last_exception = e
-                str_e = str(e).lower()
-                # Se c'è un picco di traffico (503 / 429), attendi prima di riprovare
-                if "503" in str_e or "unavailable" in str_e or "429" in str_e:
-                    time.sleep(2)
-                    continue
-                else:
-                    break
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=[uploaded_video, prompt],
+                config=config
+            )
+
+            try:
+                client.files.delete(name=uploaded_video.name)
+            except Exception:
+                pass
+
+            if response.text:
+                json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(0))
+
+            raise Exception("L'IA non ha restituito un formato JSON valido.")
+
+        except Exception as e:
+            last_exception = e
+            time.sleep(1)
+            continue
 
     raise Exception(f"Errore durante l'analisi IA: {last_exception}")
 
 # =========================================================
-# 3. GESTIONE INPUT (DOWNLOAD DIRETTAMENTE CON YT-DLP PYTHON)
+# 3. GESTIONE INPUT
 # =========================================================
 def download_and_analyze_link(url):
     temp_dir = tempfile.mkdtemp()
@@ -266,7 +262,7 @@ def download_and_analyze_link(url):
             ydl.download([url])
 
         if not os.path.exists(out_file) or os.path.getsize(out_file) == 0:
-            raise Exception("Il social network ha bloccato il download cloud. Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
+            raise Exception("Instagram/TikTok bloccano i server Cloud. Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
 
         data = analyze_video_file_path(out_file, video_description="")
         data["url"] = url
