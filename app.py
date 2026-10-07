@@ -4,14 +4,14 @@ import re
 import tempfile
 import time
 import base64
+import subprocess
 import requests
 import streamlit as st
 from google import genai
 from google.genai import types
-import yt_dlp
 
 # =========================================================
-# 1. STILE E TEMA DARK (CON TESTO MULTILINEA NELLE PILLOLE)
+# 1. STILE E TEMA DARK
 # =========================================================
 st.set_page_config(page_title="SfizFit - Ricette & Macros", page_icon="🥐", layout="centered")
 
@@ -22,51 +22,23 @@ except Exception:
 
 st.markdown("""
 <style>
-/* Sfondo Generale Scuro */
-.stApp { 
-    background-color: #121212 !important; 
-}
-
-/* Riduzione spazio vuoto in alto */
+.stApp { background-color: #121212 !important; }
 .block-container, div[data-testid="stAppViewBlockContainer"] {
     padding-top: 1rem !important;
     padding-bottom: 1rem !important;
 }
-
-/* Tipografia */
-h1, h2, h3 { 
-    color: #FFFFFF !important; 
-    font-family: 'Helvetica Neue', sans-serif; 
-    font-weight: 700; 
-}
-p, label, span, div { 
-    color: #E2E8F0 !important; 
-}
-
-/* Nascondi Elementi di Default Streamlit */
+h1, h2, h3 { color: #FFFFFF !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
+p, label, span, div { color: #E2E8F0 !important; }
 #MainMenu, footer, header, div[data-testid="stToolbar"], .stAppToolbar, .stAppDeployButton {
     visibility: hidden; display: none;
 }
-
-/* Header & Titolo App */
-.header-title {
-    font-size: 26px;
-    font-weight: 800;
-    color: #FFFFFF;
-    margin-bottom: 12px;
-}
-
-/* Input Cerca */
+.header-title { font-size: 26px; font-weight: 800; color: #FFFFFF; margin-bottom: 12px; }
 div[data-baseweb="input"] {
     background-color: #1E1E1E !important;
     border-radius: 12px !important;
     border: 1px solid #2D2D2D !important;
 }
-div[data-baseweb="input"] input {
-    color: #FFFFFF !important;
-}
-
-/* CARD RICETTA */
+div[data-baseweb="input"] input { color: #FFFFFF !important; }
 .recipe-card {
     background-color: #1E1E1E;
     border-radius: 16px;
@@ -75,129 +47,62 @@ div[data-baseweb="input"] input {
     border: 1px solid #2D2D2D;
     text-align: center;
 }
-
 .card-title-top {
-    font-size: 16px;
-    font-weight: 700;
-    color: #FFFFFF !important;
-    text-align: center;
-    margin-bottom: 10px;
-    line-height: 1.3;
+    font-size: 16px; font-weight: 700; color: #FFFFFF !important;
+    text-align: center; margin-bottom: 10px; line-height: 1.3;
 }
-
 .card-img-full {
-    width: 100% !important;
-    height: 40vh !important;
-    object-fit: cover !important;
-    object-position: center !important;
-    border-radius: 12px !important;
-    display: block !important;
+    width: 100% !important; height: 40vh !important;
+    object-fit: cover !important; object-position: center !important;
+    border-radius: 12px !important; display: block !important;
 }
-
-/* PILLOLE MACRONUTRIENTI CON ANDATA A CAPO */
 .macro-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 4px;
-    margin: 10px 0 16px 0;
-    width: 100%;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 4px; margin: 10px 0 16px 0; width: 100%;
 }
-
-.macro-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-}
-
+.macro-box { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 0; }
 .macro-label {
-    font-size: 9px !important;
-    font-weight: 700;
-    color: #94A3B8 !important;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.2px;
-    white-space: nowrap;
+    font-size: 9px !important; font-weight: 700; color: #94A3B8 !important;
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.2px; white-space: nowrap;
 }
-
 .macro-pill {
-    width: 100%;
-    text-align: center;
-    padding: 6px 4px;
-    border-radius: 14px;
-    font-size: 11px;
-    font-weight: 700;
-    white-space: normal !important;
-    word-break: break-word;
-    line-height: 1.2;
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100%; text-align: center; padding: 6px 4px; border-radius: 14px;
+    font-size: 11px; font-weight: 700; white-space: normal !important;
+    word-break: break-word; line-height: 1.2; min-height: 38px;
+    display: flex; align-items: center; justify-content: center;
 }
-
-/* Colori Pillole */
 .pill-cal { background-color: #3B1C1C; color: #FCA5A5 !important; border: 1px solid #7F1D1D; }
 .pill-prot { background-color: #143823; color: #86EFAC !important; border: 1px solid #14532D; }
 .pill-carb { background-color: #3B2514; color: #FDBA74 !important; border: 1px solid #7C2D12; }
 .pill-fat { background-color: #1A2B4C; color: #93C5FD !important; border: 1px solid #1E3A8A; }
-
-/* Stile Expander Dettagli */
 div[data-testid="stExpander"] {
     border: 1px solid #2D2D2D !important;
     border-radius: 12px !important;
     background-color: #181818 !important;
     margin-bottom: 14px !important;
 }
-
-/* FORZA CONTENITORI BOTTONI A OCCUPARE IL 100% DELLA LARGHEZZA */
 div[data-testid="stExpander"] div[data-testid="stElementContainer"],
 div[data-testid="stExpander"] div[data-testid="stButton"], 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"], 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] {
-    width: 100% !important;
-    max-width: 100% !important;
+    width: 100% !important; max-width: 100% !important;
 }
-
-/* STILE VERDE SMERALDO FULL-WIDTH PER I PULSANTI */
 div[data-testid="stExpander"] div[data-testid="stButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a {
-    background-color: #414542 !important;
-    color: #FFFFFF !important;
-    border-radius: 10px !important;
-    border: none !important;
-    height: 46px !important;
-    font-weight: 700 !important;
-    width: 100% !important;
-    font-size: 14px !important;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    text-align: center !important;
-    text-decoration: none !important;
-    margin-top: 4px !important;
-    margin-bottom: 8px !important;
+    background-color: #414542 !important; color: #FFFFFF !important;
+    border-radius: 10px !important; border: none !important;
+    height: 46px !important; font-weight: 700 !important; width: 100% !important;
+    font-size: 14px !important; display: flex !important;
+    justify-content: center !important; align-items: center !important;
+    text-align: center !important; text-decoration: none !important;
+    margin-top: 4px !important; margin-bottom: 8px !important;
     box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
-
 div[data-testid="stExpander"] div[data-testid="stButton"] > button:hover, 
 div[data-testid="stExpander"] div[data-testid="stDownloadButton"] > button:hover, 
 div[data-testid="stExpander"] div[data-testid="stLinkButton"] > a:hover {
-    background-color: #22C55E !important;
-    color: #FFFFFF !important;
-}
-
-div[data-testid="stExpander"] div[data-testid="stButton"] button *, 
-div[data-testid="stExpander"] div[data-testid="stDownloadButton"] button *, 
-div[data-testid="stExpander"] div[data-testid="stLinkButton"] a * {
-    color: #FFFFFF !important;
-    text-align: center !important;
-    justify-content: center !important;
-    display: inline-flex !important;
-    align-items: center !important;
+    background-color: #22C55E !important; color: #FFFFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -211,13 +116,9 @@ elif isinstance(api_keys_raw, list):
 else:
     API_KEYS = []
 
-# =========================================================
-# 2. ARCHIVIO E FUNZIONI DI SUPPORTO
-# =========================================================
 DATA_FILE = "recipes.json"
 
 def url_to_base64(url):
-    """Scarica l'immagine e la trasforma in una stringa indelebile permanente"""
     if not url or not url.startswith("http"):
         return url
     try:
@@ -263,7 +164,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI
+# 2. ENGINE IA: GOOGLE GENAI
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
@@ -316,7 +217,6 @@ def analyze_video_file(file_path, video_description=""):
                 """
 
                 try:
-                    # Configurazione per disabilitare AFC ed evitare warning/blocchi nei log
                     config = types.GenerateContentConfig(
                         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
                     )
@@ -339,7 +239,6 @@ def analyze_video_file(file_path, video_description=""):
             except Exception as e:
                 err_msg = str(e).lower()
                 str_e = str(e)
-                
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
                 is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
                 
@@ -353,41 +252,35 @@ def analyze_video_file(file_path, video_description=""):
     raise Exception(f"Servizio momentaneamente non disponibile. Dettaglio: {last_exception}")
 
 # =========================================================
-# 4. DOWNLOAD E CARICAMENTO VIDEO
+# 3. DOWNLOAD VIA SUBPROCESS (ISOLAMENTO E TIMEOUT RIGIDO)
 # =========================================================
 def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         temp_path = tmp_file.name
 
-    scraped_desc = ""
-    thumbnail_url = ""
-
     try:
-        ydl_opts = {
-            'format': 'b[ext=mp4]/best[ext=mp4]/best',
-            'outtmpl': temp_path,
-            'quiet': True,
-            'no_warnings': True,
-            'overwrites': True,
-            'socket_timeout': 6,
-            'nocheckcertificate': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        cmd = [
+            "yt-dlp",
+            "--format", "b[ext=mp4]/best[ext=mp4]/best",
+            "--output", temp_path,
+            "--socket-timeout", "5",
+            "--no-check-certificate",
+            "--force-overwrites",
+            url
+        ]
+        
+        # Esegue yt-dlp come processo esterno con un timeout massimo di 15 secondi
+        subprocess.run(cmd, check=True, timeout=15, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=True)
-            desc = info_dict.get('description', '') or ''
-            title = info_dict.get('title', '') or ''
-            thumbnail_url = info_dict.get('thumbnail', '') or ''
-            scraped_desc = f"Titolo: {title} | Didascalia: {desc}"
-
-        data = analyze_video_file(temp_path, scraped_desc)
+        data = analyze_video_file(temp_path, video_description="")
         data["url"] = url
-        data["thumbnail"] = url_to_base64(thumbnail_url)
+        data["thumbnail"] = "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=400&q=80"
         return data
 
+    except subprocess.TimeoutExpired:
+        raise Exception("Instagram blocca la connessione dai server Streamlit Cloud. Usa la scheda '📁 Carica File' caricando direttamente il video .mp4.")
     except Exception as e:
-        raise Exception(f"Impossibile scaricare dal link social (Instagram potrebbe bloccare l'IP di Streamlit). Prova a scaricare il video sul telefono e caricarlo nella scheda '📁 Carica File'. Dettaglio: {e}")
+        raise Exception(f"Impossibile scaricare dal link inserito. Dettaglio: {e}")
 
     finally:
         if os.path.exists(temp_path):
@@ -414,7 +307,7 @@ def process_uploaded_video(uploaded_file):
                 pass
 
 # =========================================================
-# 5. HEADER & AGGIUNTA NUOVA RICETTA
+# 4. INTERFACCIA UTENTE
 # =========================================================
 st.markdown('<div class="header-title">🥐 SfizFit - Ricette & Macros</div>', unsafe_allow_html=True)
 
@@ -427,7 +320,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         if st.button("🚀 Estrai Ricetta", use_container_width=True):
             if video_url:
                 try:
-                    with st.spinner("✨ Solo un attimo meraviglia..."):
+                    with st.spinner("✨ Estrazione ricetta in corso..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
                     st.error(f"Errore: {e}")
@@ -446,14 +339,8 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         st.success("✅ Ricetta salvata!")
         st.rerun()
 
-# =========================================================
-# 6. BARRA DI RICERCA (FIXED LABEL PER EVITARE LOOP LOGS)
-# =========================================================
 search_query = st.text_input("Cerca ricetta", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
-# =========================================================
-# 7. BACKUP & RIPRISTINO
-# =========================================================
 with st.expander("⚙️ Backup & Ripristino"):
     backup_json_str = json.dumps(st.session_state.recipes, ensure_ascii=False, indent=2)
     st.download_button("📥 Scarica Backup JSON", backup_json_str, file_name="sfizfit_backup.json", mime="application/json", use_container_width=True)
@@ -470,54 +357,8 @@ with st.expander("⚙️ Backup & Ripristino"):
         except Exception:
             st.error("File non valido.")
 
-    st.markdown("---")
-    st.markdown("**🛠️ Strumenti Manutenzione**")
-    if st.button("🔄 Ripara e Converti Immagini Scadute", use_container_width=True):
-        if not st.session_state.recipes:
-            st.warning("Nessuna ricetta presente da riparare.")
-        else:
-            progresso = st.progress(0)
-            status = st.empty()
-            
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'skip_download': True,
-                'socket_timeout': 8,
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            tot = len(st.session_state.recipes)
-            rigenerate = 0
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                for idx, r in enumerate(st.session_state.recipes):
-                    status.text(f"Ripristino foto {idx+1}/{tot}: {r.get('titolo', '')}")
-                    url_video = r.get("url")
-                    
-                    current_thumb = r.get("thumbnail", "")
-                    if url_video and url_video != "#" and (not current_thumb or current_thumb.startswith("http")):
-                        try:
-                            info = ydl.extract_info(url_video, download=False)
-                            new_url = info.get("thumbnail")
-                            if new_url:
-                                r["thumbnail"] = url_to_base64(new_url)
-                                rigenerate += 1
-                        except Exception:
-                            pass
-                    progresso.progress((idx + 1) / tot)
-            
-            status.empty()
-            progresso.empty()
-            save_recipes(st.session_state.recipes)
-            st.success(f"✅ Ripristinate e convertite {rigenerate} foto con successo!")
-            st.rerun()
-
 st.markdown("<br>", unsafe_allow_html=True)
 
-# =========================================================
-# 8. ELENCO RICETTE
-# =========================================================
 filtered_recipes = [
     r for r in st.session_state.recipes 
     if search_query.lower() in r.get('titolo', '').lower() or search_query.lower() in str(r.get('ingredienti', '')).lower()
