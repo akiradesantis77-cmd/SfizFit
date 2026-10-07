@@ -217,11 +217,11 @@ else:
 DATA_FILE = "recipes.json"
 
 def url_to_base64(url):
-    """Scarica l'immagine e la trasforma in una stringa indelebile permanente"""
+    """Scarica l'immagine e la trasforma in una stringa indelebile permanente con timeout"""
     if not url or not url.startswith("http"):
         return url
     try:
-        res = requests.get(url, timeout=8)
+        res = requests.get(url, timeout=6)
         if res.status_code == 200:
             b64 = base64.b64encode(res.content).decode("utf-8")
             return f"data:image/jpeg;base64,{b64}"
@@ -263,13 +263,12 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E FALLBACK MODELLI SUPPORTATI)
+# 3. ENGINE IA: GOOGLE GENAI (CON TIMEOUT E ROTAZIONE)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    # Modelli attivi e aggiornati per l'SDK google-genai
     MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3.6-flash"]
     last_exception = None
 
@@ -284,9 +283,15 @@ def analyze_video_file(file_path, video_description=""):
                         config=types.UploadFileConfig(mime_type="video/mp4")
                     )
 
+                # Timeout per la lavorazione del video (max 20 tentativi da 2 sec = 40 secondi)
+                max_wait_attempts = 20
+                attempt_cnt = 0
                 while uploaded_video.state.name == "PROCESSING":
                     time.sleep(2)
+                    attempt_cnt += 1
                     uploaded_video = client.files.get(name=uploaded_video.name)
+                    if attempt_cnt >= max_wait_attempts:
+                        raise Exception("Tempo limite di elaborazione video superato.")
 
                 if uploaded_video.state.name == "FAILED":
                     raise Exception("Impossibile elaborare il file video con Gemini.")
@@ -332,7 +337,7 @@ def analyze_video_file(file_path, video_description=""):
                 str_e = str(e)
                 
                 is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
-                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e
+                is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg or "not_found" in err_msg or "404" in str_e or "tempo limite" in err_msg
                 
                 if is_rate_limit or is_server_busy:
                     last_exception = e
@@ -341,10 +346,10 @@ def analyze_video_file(file_path, video_description=""):
                 else:
                     raise e
 
-    raise Exception(f"Tutti i modelli e le API Key sono momentaneamente occupati. Ultimo errore: {last_exception}")
+    raise Exception(f"Impossibile completare la richiesta. Ultimo errore: {last_exception}")
 
 # =========================================================
-# 4. DOWNLOAD E CARICAMENTO VIDEO
+# 4. DOWNLOAD E CARICAMENTO VIDEO (CON TIMEOUT RIGIDO)
 # =========================================================
 def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -360,7 +365,7 @@ def download_and_analyze_link(url):
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'socket_timeout': 30,
+            'socket_timeout': 12,  # Interrompe se Instagram non risponde entro 12 secondi
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
@@ -373,7 +378,6 @@ def download_and_analyze_link(url):
 
         data = analyze_video_file(temp_path, scraped_desc)
         data["url"] = url
-        # CONVERSIONE IN BASE64 SUBITO PER EVITARE CHE SCADA
         data["thumbnail"] = url_to_base64(thumbnail_url)
         return data
     finally:
@@ -417,7 +421,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                     with st.spinner("✨ Solo un attimo meraviglia..."):
                         recipe_data = download_and_analyze_link(video_url)
                 except Exception as e:
-                    st.error(f"Errore: {e}")
+                    st.error(f"Errore durante l'estrazione: {e}")
     with tab2:
         uploaded_file = st.file_uploader("Seleziona Video", type=["mp4", "mov"])
         if uploaded_file and st.button("👨‍🍳 Analizza Video", use_container_width=True):
@@ -425,7 +429,7 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
                 with st.spinner("🤖 Analisi in corso..."):
                     recipe_data = process_uploaded_video(uploaded_file)
             except Exception as e:
-                st.error(f"Errore: {e}")
+                st.error(f"Errore durante l'analisi: {e}")
 
     if recipe_data:
         st.session_state.recipes.insert(0, recipe_data)
@@ -470,7 +474,7 @@ with st.expander("⚙️ Backup & Ripristino"):
                 'quiet': True,
                 'no_warnings': True,
                 'skip_download': True,
-                'socket_timeout': 15,
+                'socket_timeout': 10,
                 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
             
@@ -482,7 +486,6 @@ with st.expander("⚙️ Backup & Ripristino"):
                     status.text(f"Ripristino foto {idx+1}/{tot}: {r.get('titolo', '')}")
                     url_video = r.get("url")
                     
-                    # Ripara solo se l'immagine è assente o è ancora un link remoto
                     current_thumb = r.get("thumbnail", "")
                     if url_video and url_video != "#" and (not current_thumb or current_thumb.startswith("http")):
                         try:
