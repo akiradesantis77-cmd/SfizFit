@@ -163,7 +163,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
         raise Exception("Il file video non esiste o è vuoto.")
 
-    MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
+    # ESCLUSIVAMENTE il modello aggiornato richiesto da Google
+    MODELS_TO_TRY = ["gemini-3.8-flash"]
     last_exception = None
 
     prompt = f"""
@@ -234,7 +235,9 @@ def analyze_video_file_path(file_path, video_description=""):
 
             except Exception as e:
                 last_exception = e
-                break
+                # Interrompe immediatamente se il modello non esiste/non è disponibile
+                if "404" in str(e) or "not_found" in str(e).lower():
+                    raise e
 
     raise Exception(f"Impossibile completare l'analisi. Dettaglio: {last_exception}")
 
@@ -257,7 +260,6 @@ def download_and_analyze_link(url):
             url
         ]
         
-        # Timeout massimo di 15 secondi per evitare che lo spinner continui all'infinito
         result = subprocess.run(
             cmd, 
             stdout=subprocess.PIPE, 
