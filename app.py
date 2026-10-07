@@ -4,7 +4,6 @@ import re
 import tempfile
 import time
 import base64
-import concurrent.futures
 import requests
 import streamlit as st
 from google import genai
@@ -317,9 +316,14 @@ def analyze_video_file(file_path, video_description=""):
                 """
 
                 try:
+                    # Configurazione per disabilitare AFC ed evitare warning/blocchi nei log
+                    config = types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
                     response = client.models.generate_content(
                         model=model_name,
-                        contents=[uploaded_video, prompt]
+                        contents=[uploaded_video, prompt],
+                        config=config
                     )
                 finally:
                     try:
@@ -349,9 +353,9 @@ def analyze_video_file(file_path, video_description=""):
     raise Exception(f"Servizio momentaneamente non disponibile. Dettaglio: {last_exception}")
 
 # =========================================================
-# 4. DOWNLOAD CON TIMEOUT HARDWARE FORZATO (MAX 12 SECONDI)
+# 4. DOWNLOAD E CARICAMENTO VIDEO
 # =========================================================
-def _raw_download_and_analyze(url):
+def download_and_analyze_link(url):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
         temp_path = tmp_file.name
 
@@ -365,7 +369,7 @@ def _raw_download_and_analyze(url):
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
-            'socket_timeout': 5,
+            'socket_timeout': 6,
             'nocheckcertificate': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
@@ -382,21 +386,15 @@ def _raw_download_and_analyze(url):
         data["thumbnail"] = url_to_base64(thumbnail_url)
         return data
 
+    except Exception as e:
+        raise Exception(f"Impossibile scaricare dal link social (Instagram potrebbe bloccare l'IP di Streamlit). Prova a scaricare il video sul telefono e caricarlo nella scheda '📁 Carica File'. Dettaglio: {e}")
+
     finally:
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except Exception:
                 pass
-
-def download_and_analyze_link(url):
-    # Esegue il download in un thread separato con stop forzato a 18 secondi
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future = executor.submit(_raw_download_and_analyze, url)
-        try:
-            return future.result(timeout=18)
-        except concurrent.futures.TimeoutError:
-            raise Exception("Instagram ha bloccato la connessione dal server Streamlit (Timeout). Scarica il video sul telefono e caricalo dalla scheda '📁 Carica File'.")
 
 def process_uploaded_video(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
@@ -449,9 +447,9 @@ with st.expander("➕ Aggiungi Nuova Ricetta"):
         st.rerun()
 
 # =========================================================
-# 6. BARRA DI RICERCA
+# 6. BARRA DI RICERCA (FIXED LABEL PER EVITARE LOOP LOGS)
 # =========================================================
-search_query = st.text_input("", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
+search_query = st.text_input("Cerca ricetta", placeholder="🔍 Cerca ricetta...", label_visibility="collapsed")
 
 # =========================================================
 # 7. BACKUP & RIPRISTINO
