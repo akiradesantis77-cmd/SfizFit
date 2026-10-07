@@ -172,7 +172,9 @@ def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    # Modello primario con fallback a 2.5-flash
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        raise Exception("Impossibile scaricare il video. Il social network blocca il download cloud.")
+
     MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash"]
     last_exception = None
 
@@ -267,12 +269,11 @@ def download_and_analyze_link(url):
         temp_path = tmp_file.name
 
     try:
-        # Comando ottimizzato per evitare download di video troppo pesanti
         cmd = [
             "yt-dlp",
-            "--format", "worstvideo[ext=mp4]+worstaudio[ext=m4a]/worst[ext=mp4]/w",
+            "--format", "b[ext=mp4]/best[ext=mp4]/best",
             "--output", temp_path,
-            "--socket-timeout", "15",
+            "--socket-timeout", "10",
             "--no-check-certificate",
             "--force-overwrites",
             url
@@ -283,11 +284,11 @@ def download_and_analyze_link(url):
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE, 
             text=True, 
-            timeout=45
+            timeout=30
         )
 
-        if result.returncode != 0:
-            raise Exception(f"Errore download video: {result.stderr[:200]}")
+        if result.returncode != 0 or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+            raise Exception("Instagram/TikTok bloccano il download da server Cloud. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
 
         data = analyze_video_file_path(temp_path, video_description="")
         data["url"] = url
@@ -295,7 +296,7 @@ def download_and_analyze_link(url):
         return data
 
     except subprocess.TimeoutExpired:
-        raise Exception("Instagram/TikTok hanno bloccato la richiesta cloud (Timeout). Scarica il video sul telefono ed usa la scheda '📁 Carica File'.")
+        raise Exception("Tempo d'attesa scaduto. Scarica il video sul telefono e usalo nella scheda '📁 Carica File'.")
     except Exception as e:
         raise Exception(f"{e}")
 
