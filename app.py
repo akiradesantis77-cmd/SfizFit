@@ -263,7 +263,7 @@ if "recipes" not in st.session_state:
     st.session_state.recipes = load_recipes()
 
 # =========================================================
-# 3. ENGINE IA: GOOGLE GENAI
+# 3. ENGINE IA: GOOGLE GENAI (CON ROTAZIONE E RETRY 503)
 # =========================================================
 def analyze_video_file(file_path, video_description=""):
     if not API_KEYS:
@@ -326,13 +326,20 @@ def analyze_video_file(file_path, video_description=""):
 
         except Exception as e:
             err_msg = str(e).lower()
-            if "429" in str(e) or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg:
+            str_e = str(e)
+            
+            # Intercetta sia i limiti di quota (429) sia i server intasati (503 / UNAVAILABLE / High Demand)
+            is_rate_limit = "429" in str_e or "quota" in err_msg or "resource_exhausted" in err_msg or "limit" in err_msg
+            is_server_busy = "503" in str_e or "unavailable" in err_msg or "high demand" in err_msg
+            
+            if is_rate_limit or is_server_busy:
                 last_exception = e
+                time.sleep(2)  # Pausa di 2 secondi prima di passare alla chiave successiva o riprovare
                 continue
             else:
                 raise e
 
-    raise Exception(f"Tutte le API Key configurate hanno raggiunto il limite giornaliero. Ultimo errore: {last_exception}")
+    raise Exception(f"Nessuna API Key ha potuto completare la richiesta (Limiti raggiunti o server intasati). Ultimo errore: {last_exception}")
 
 # =========================================================
 # 4. DOWNLOAD E CARICAMENTO VIDEO
