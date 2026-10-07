@@ -172,8 +172,8 @@ def analyze_video_file_path(file_path, video_description=""):
     if not API_KEYS:
         raise Exception("Nessuna API Key trovata nei Secrets di Streamlit.")
 
-    # Nomi di modelli ufficiali e validi
-    MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    # Modelli attuali e compatibili con l'SDK google-genai
+    MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.0-flash"]
     last_exception = None
 
     prompt = f"""
